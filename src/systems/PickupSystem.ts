@@ -49,6 +49,9 @@ export const PickupSystem: System = {
         // Ease in: slow start, accelerates as orb gets closer
         const t = 1 - Math.min(1, dist / magnetR);
         const speed = 80 + t * t * 400;
+        // Track prevPos so render interpolation works smoothly
+        transform.prevPos.x = transform.pos.x;
+        transform.prevPos.y = transform.pos.y;
         transform.pos.x += dir.x * speed * dt;
         transform.pos.y += dir.y * speed * dt;
       }
