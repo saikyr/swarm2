@@ -1,0 +1,197 @@
+import type { System } from '../ecs/system';
+import type { World } from '../ecs/ecs';
+import { TRANSFORM, VELOCITY, HEALTH, COLLIDER, RENDERABLE, ENEMY, PLAYER } from '../components';
+import type { Transform, Velocity, Health, Collider, Renderable, Enemy } from '../components';
+import { CollisionLayer } from '../components';
+import { EnemyType, EliteAffix, ENEMY_SPAWN_DISTANCE_MIN, ENEMY_SPAWN_DISTANCE_MAX } from '../constants';
+import { randomRange, TAU } from '../utils/math';
+import type { RunContext } from '../game/run';
+
+export let runRef: RunContext | null = null;
+export function setRunRef(r: RunContext): void { runRef = r; }
+
+const ELITE_PREFIXES = ['Vile', 'Cursed', 'Ancient', 'Dire', 'Fell', 'Dread', 'Shadow', 'Blood', 'Iron', 'Storm'];
+const ELITE_NAMES = ['Brute', 'Reaver', 'Warden', 'Crusher', 'Stalker', 'Ravager', 'Hulk', 'Fiend', 'Wraith', 'Behemoth'];
+
+function generateEliteName(): string {
+  const prefix = ELITE_PREFIXES[Math.floor(Math.random() * ELITE_PREFIXES.length)];
+  const name = ELITE_NAMES[Math.floor(Math.random() * ELITE_NAMES.length)];
+  return `${prefix} ${name}`;
+}
+
+interface EnemyDef {
+  type: EnemyType;
+  shape: 'circle' | 'triangle' | 'square' | 'diamond';
+  color: string;
+  radius: number;
+  speed: number;
+  hp: number;
+  damage: number;
+  xpValue: number;
+}
+
+const ENEMY_DEFS: Record<EnemyType, EnemyDef> = {
+  [EnemyType.Basic]: { type: EnemyType.Basic, shape: 'circle', color: '#ff4444', radius: 10, speed: 70, hp: 30, damage: 10, xpValue: 1 },
+  [EnemyType.Fast]: { type: EnemyType.Fast, shape: 'triangle', color: '#ff8844', radius: 8, speed: 130, hp: 15, damage: 8, xpValue: 2 },
+  [EnemyType.Tank]: { type: EnemyType.Tank, shape: 'square', color: '#aa2222', radius: 16, speed: 40, hp: 100, damage: 15, xpValue: 3 },
+  [EnemyType.Ranged]: { type: EnemyType.Ranged, shape: 'diamond', color: '#ff44aa', radius: 9, speed: 50, hp: 20, damage: 12, xpValue: 2 },
+};
+
+export const SpawnerSystem: System = {
+  name: 'SpawnerSystem',
+  update(world: World, dt: number) {
+    if (!runRef) return;
+
+    const players = world.query(PLAYER, TRANSFORM);
+    if (players.length === 0) return;
+
+    const playerCount = players.length;
+
+    // Pick a random player to spawn around
+    const randomPlayer = players[Math.floor(Math.random() * playerCount)];
+    const playerT = world.getComponent<Transform>(randomPlayer, TRANSFORM)!;
+
+    runRef.timer += dt;
+    runRef.spawnTimer -= dt;
+
+    // Update wave based on time
+    const minutes = runRef.timer / 60;
+    if (minutes < 1) runRef.wave = 1;
+    else if (minutes < 3) runRef.wave = 2;
+    else if (minutes < 5) runRef.wave = 3;
+    else if (minutes < 8) runRef.wave = 4;
+    else if (minutes < 12) runRef.wave = 5;
+    else runRef.wave = 6;
+
+    if (runRef.spawnTimer > 0) return;
+
+    // Multiplayer scaling formulas
+    const spawnRateMult = 1 + (playerCount - 1) * 0.4;
+    const maxEnemiesMult = 1 + (playerCount - 1) * 0.3;
+    const hpMult = 1 + (playerCount - 1) * 0.5;
+    const batchMult = 1 + (playerCount - 1) * 0.25;
+
+    // Calculate spawn rate (increases over time)
+    const baseRate = 1.0 - Math.min(0.7, minutes * 0.04);
+    runRef.spawnTimer = baseRate / spawnRateMult;
+
+    // How many to spawn
+    const batchSize = Math.floor((1 + minutes * 0.5) * batchMult);
+    const currentEnemyCount = world.query(ENEMY).length;
+    const maxEnemies = Math.floor((150 + minutes * 10) * maxEnemiesMult);
+    if (currentEnemyCount >= maxEnemies) return;
+
+    for (let i = 0; i < batchSize && currentEnemyCount + i < maxEnemies; i++) {
+      const type = pickEnemyType(minutes);
+      const isChampion = minutes >= 5 && Math.random() < 0.01;
+      const isElite = isChampion || shouldSpawnElite(minutes);
+      const affixes = isElite ? pickAffixes(minutes) : [];
+
+      spawnEnemy(world, playerT.pos.x, playerT.pos.y, type, isElite, affixes, isChampion, hpMult);
+    }
+  },
+};
+
+function pickEnemyType(minutes: number): EnemyType {
+  const r = Math.random();
+  if (minutes < 1) return EnemyType.Basic;
+  if (minutes < 3) return r < 0.7 ? EnemyType.Basic : EnemyType.Fast;
+  if (minutes < 5) {
+    if (r < 0.5) return EnemyType.Basic;
+    if (r < 0.8) return EnemyType.Fast;
+    return EnemyType.Tank;
+  }
+  if (r < 0.35) return EnemyType.Basic;
+  if (r < 0.6) return EnemyType.Fast;
+  if (r < 0.85) return EnemyType.Tank;
+  return EnemyType.Ranged;
+}
+
+function shouldSpawnElite(minutes: number): boolean {
+  if (minutes < 3) return false;
+  const chance = Math.min(0.15, (minutes - 3) * 0.02);
+  return Math.random() < chance;
+}
+
+function pickAffixes(minutes: number): EliteAffix[] {
+  const allAffixes = Object.values(EliteAffix);
+  const maxCount = minutes < 5 ? 1 : minutes < 8 ? 2 : 3;
+  const count = 1 + Math.floor(Math.random() * maxCount);
+  const chosen: EliteAffix[] = [];
+  const available = [...allAffixes];
+  for (let i = 0; i < count && available.length > 0; i++) {
+    const idx = Math.floor(Math.random() * available.length);
+    chosen.push(available[idx]);
+    available.splice(idx, 1);
+  }
+  return chosen;
+}
+
+function spawnEnemy(
+  world: World, playerX: number, playerY: number,
+  type: EnemyType, isElite: boolean, affixes: EliteAffix[], isChampion = false,
+  hpMultiplier = 1
+): void {
+  const def = ENEMY_DEFS[type];
+  const angle = Math.random() * TAU;
+  const dist = randomRange(ENEMY_SPAWN_DISTANCE_MIN, ENEMY_SPAWN_DISTANCE_MAX);
+  const x = playerX + Math.cos(angle) * dist;
+  const y = playerY + Math.sin(angle) * dist;
+
+  let hp = def.hp;
+  let speed = def.speed;
+  let damage = def.damage;
+  let radius = def.radius;
+  let color = def.color;
+
+  // Wave scaling
+  const waveScale = runRef ? 1 + (runRef.wave - 1) * 0.15 : 1;
+  hp *= waveScale;
+
+  // Multiplayer HP scaling
+  hp *= hpMultiplier;
+
+  if (isElite) {
+    if (isChampion) {
+      hp *= 10;
+      damage *= 2;
+      radius *= 1.6;
+      color = '#ff6600';
+    } else {
+      hp *= 3;
+      damage *= 1.5;
+      radius *= 1.3;
+      color = '#ffcc44';
+    }
+
+    for (const affix of affixes) {
+      if (affix === EliteAffix.Fast) speed *= 1.5;
+      if (affix === EliteAffix.Tough) hp *= 2;
+    }
+  }
+
+  const entity = world.createEntity();
+  world.addComponent<Transform>(entity, TRANSFORM, {
+    pos: { x, y }, prevPos: { x, y }, rotation: 0,
+  });
+  world.addComponent<Velocity>(entity, VELOCITY, { x: 0, y: 0 });
+  world.addComponent<Health>(entity, HEALTH, {
+    current: hp, max: hp, iframes: 0,
+  });
+  world.addComponent<Collider>(entity, COLLIDER, {
+    radius, layer: CollisionLayer.Enemy, mask: [CollisionLayer.PlayerProjectile],
+  });
+  world.addComponent<Renderable>(entity, RENDERABLE, {
+    shape: def.shape, radius, color,
+    glowColor: isElite ? '#ffcc44' : color,
+    glowSize: isElite ? 15 : 6,
+    alpha: 1, zIndex: 2,
+  });
+  world.addComponent<Enemy>(entity, ENEMY, {
+    type, speed, damage,
+    xpValue: def.xpValue * (isChampion ? 10 : isElite ? 5 : 1),
+    isElite, affixes,
+    attackCooldown: 1, attackTimer: 0,
+    eliteName: isElite ? generateEliteName() : '',
+  });
+}

@@ -1,0 +1,69 @@
+import type { System } from '../ecs/system';
+import type { World } from '../ecs/ecs';
+import { TRANSFORM, WEAPON, WEAPON_OWNER, ENEMY } from '../components';
+import type { Transform, Weapon, WeaponOwner } from '../components';
+import { vec2DistSq } from '../utils/math';
+import { TargetingType } from '../constants';
+
+export const TargetingSystem: System = {
+  name: 'TargetingSystem',
+  update(world: World, _dt: number) {
+    const enemies = world.query(ENEMY, TRANSFORM);
+    if (enemies.length === 0) {
+      // Clear all weapon targets
+      for (const weaponEntity of world.query(WEAPON, WEAPON_OWNER)) {
+        const weapon = world.getComponent<Weapon>(weaponEntity, WEAPON)!;
+        weapon.target = null;
+      }
+      return;
+    }
+
+    for (const weaponEntity of world.query(WEAPON, WEAPON_OWNER)) {
+      const weapon = world.getComponent<Weapon>(weaponEntity, WEAPON)!;
+      const wo = world.getComponent<WeaponOwner>(weaponEntity, WEAPON_OWNER)!;
+      const ownerTransform = world.getComponent<Transform>(wo.owner, TRANSFORM);
+      if (!ownerTransform) { weapon.target = null; continue; }
+
+      if (weapon.locked) { weapon.target = null; continue; }
+
+      // Orbital targeting: target is owner position
+      if (weapon.targeting === TargetingType.Orbital) {
+        weapon.target = {
+          entity: wo.owner,
+          x: ownerTransform.pos.x,
+          y: ownerTransform.pos.y,
+          distSq: 0,
+        };
+        continue;
+      }
+
+      const rangeSq = weapon.range * weapon.range;
+      weapon.target = null;
+
+      if (weapon.targeting === TargetingType.Closest || weapon.targeting === TargetingType.Aoe) {
+        let closestDistSq = Infinity;
+        for (const enemy of enemies) {
+          const et = world.getComponent<Transform>(enemy, TRANSFORM)!;
+          const dSq = vec2DistSq(ownerTransform.pos, et.pos);
+          if (dSq < closestDistSq && dSq <= rangeSq) {
+            closestDistSq = dSq;
+            weapon.target = { entity: enemy, x: et.pos.x, y: et.pos.y, distSq: dSq };
+          }
+        }
+      } else if (weapon.targeting === TargetingType.Random) {
+        const inRange: number[] = [];
+        for (const enemy of enemies) {
+          const et = world.getComponent<Transform>(enemy, TRANSFORM)!;
+          if (vec2DistSq(ownerTransform.pos, et.pos) <= rangeSq) {
+            inRange.push(enemy);
+          }
+        }
+        if (inRange.length > 0) {
+          const enemy = inRange[Math.floor(Math.random() * inRange.length)];
+          const et = world.getComponent<Transform>(enemy, TRANSFORM)!;
+          weapon.target = { entity: enemy, x: et.pos.x, y: et.pos.y, distSq: vec2DistSq(ownerTransform.pos, et.pos) };
+        }
+      }
+    }
+  },
+};
