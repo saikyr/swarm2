@@ -48,6 +48,7 @@ import { SnapshotManager, type SnapshotData } from '../net/snapshot';
 import { Interpolator } from '../net/interpolation';
 import { ClientEffectReactor } from '../net/client-effects';
 import { setEntityIdOffset } from '../ecs/entity';
+import { initAudio, unlockAudio, playSound, suspendAudio, resumeAudio, startAmbientDrone, updateAmbientDrone, stopAmbientDrone } from '../audio/audio';
 import { spawnBeamFx } from '../rendering/particles';
 import { DAMAGE_NUMBER_RISE_SPEED } from '../constants';
 import type { DamageNumberData, DamageFlash, Transform as TransformType } from '../components';
@@ -111,6 +112,7 @@ export class Game {
     this.stateMgr = createGameStateManager();
     this.meta = loadMeta();
 
+    initAudio();
     this.registerComponents();
     this.registerSystems();
     this.setupCallbacks();
@@ -187,6 +189,7 @@ export class Game {
       this.mouseY = e.clientY - rect.top;
     });
     canvas.addEventListener('click', (e) => {
+      unlockAudio();
       const rect = canvas.getBoundingClientRect();
       this.mouseX = e.clientX - rect.left;
       this.mouseY = e.clientY - rect.top;
@@ -249,6 +252,7 @@ export class Game {
       }
     } else if (state === GameState.Paused) {
       changeState(this.stateMgr, GameState.Playing);
+      resumeAudio();
     } else if (state === GameState.GameOver) {
       this.endRun();
     }
@@ -281,6 +285,7 @@ export class Game {
   }
 
   private setupKeyListeners(): void {
+    window.addEventListener('keydown', () => { unlockAudio(); }, { once: true });
     window.addEventListener('keydown', (e) => {
       const state = this.stateMgr.current;
 
@@ -333,10 +338,12 @@ export class Game {
       } else if (state === GameState.Playing) {
         if (e.code === 'Escape') {
           changeState(this.stateMgr, GameState.Paused);
+          suspendAudio();
         }
       } else if (state === GameState.Paused) {
         if (e.code === 'Escape' || e.code === 'Enter') {
           changeState(this.stateMgr, GameState.Playing);
+          resumeAudio();
         }
       }
     });
@@ -419,6 +426,7 @@ export class Game {
     }
 
     changeState(this.stateMgr, GameState.Playing);
+    startAmbientDrone();
   }
 
   /** Client-only: prepare an empty world for receiving snapshots */
@@ -863,6 +871,7 @@ export class Game {
 
   private onNetGameOver(_msg: GameOverMsg): void {
     changeState(this.stateMgr, GameState.GameOver);
+    stopAmbientDrone();
   }
 
   private allPlayersReady(): boolean {
@@ -976,6 +985,7 @@ export class Game {
       }
 
       updateScreenShake(this.screenShake, rawDt);
+      updateAmbientDrone(this.run.wave);
 
       if (this.networkRole !== 'client') {
         this.checkAllPlayersDead();
@@ -991,6 +1001,7 @@ export class Game {
       // Check pause button tap during gameplay
       if (consumePauseTap() && state === GameState.Playing) {
         changeState(this.stateMgr, GameState.Paused);
+        suspendAudio();
       }
 
       const tap = consumeTap();
@@ -1090,6 +1101,7 @@ export class Game {
         this.netHost.broadcast({ type: MessageType.GameOver });
       }
       changeState(this.stateMgr, GameState.GameOver);
+      stopAmbientDrone();
     }
   }
 

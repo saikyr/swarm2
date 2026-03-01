@@ -3,6 +3,9 @@ import type { World } from '../ecs/ecs';
 import { PLAYER } from '../components';
 import type { Player } from '../components';
 import { XP_BASE_PER_LEVEL, XP_LEVEL_SCALE } from '../constants';
+import { playSound } from '../audio/audio';
+import { TRANSFORM } from '../components';
+import type { Transform } from '../components';
 
 export type LevelUpCallback = (playerEntity: number) => void;
 
@@ -23,6 +26,8 @@ export const XPSystem: System = {
         player.xp -= player.xpToNext;
         player.level++;
         player.xpToNext = Math.floor(XP_BASE_PER_LEVEL * Math.pow(XP_LEVEL_SCALE, player.level - 1));
+        const t = world.getComponent<Transform>(entity, TRANSFORM);
+        playSound('level_up', t?.pos.x ?? 0, t?.pos.y ?? 0);
         if (onLevelUp) onLevelUp(entity);
       }
     }

@@ -3,6 +3,7 @@ import type { World } from '../ecs/ecs';
 import { TRANSFORM, VELOCITY, INPUT, PLAYER, HEALTH, COLLIDER } from '../components';
 import type { Transform, Velocity, InputState, Player, Health } from '../components';
 import { WORLD_WIDTH, WORLD_HEIGHT, PLAYER_RADIUS } from '../constants';
+import { playSound } from '../audio/audio';
 
 export const PlayerMovementSystem: System = {
   name: 'PlayerMovementSystem',
@@ -38,6 +39,7 @@ export const PlayerMovementSystem: System = {
         player.isDashing = true;
         player.dashTimer = player.dashDuration;
         player.dashCooldownTimer = player.dashCooldown;
+        playSound('dash', transform.pos.x, transform.pos.y);
         vel.x = input.moveX * player.dashSpeed;
         vel.y = input.moveY * player.dashSpeed;
       } else {

@@ -13,6 +13,7 @@ import type {
 import { CollisionLayer } from '../components';
 import { vec2Normalize, vec2Sub, vec2Angle, vec2DistSq } from '../utils/math';
 import { AttackPattern } from '../constants';
+import { playSound } from '../audio/audio';
 import { WEAPON_DEFS } from '../data/weapons';
 import { spawnDamageNumber } from '../rendering/damage-numbers';
 import { spawnBeamFx } from '../rendering/particles';
@@ -62,36 +63,48 @@ export const WeaponSystem: System = {
 
       weapon.cooldownTimer = weapon.cooldown;
 
+      const isCaster = weapon.id.startsWith('caster_');
+      const px = ownerTransform.pos.x, py = ownerTransform.pos.y;
       switch (weapon.pattern) {
         case AttackPattern.SingleProjectile:
           fireProjectile(world, wo.owner, ownerTransform, weapon);
+          playSound('fire_projectile', px, py, isCaster);
           break;
         case AttackPattern.Spread:
           fireSpread(world, wo.owner, ownerTransform, weapon);
+          playSound('fire_spread', px, py, isCaster);
           break;
         case AttackPattern.Sweep:
           fireSweep(world, wo.owner, ownerTransform, weapon);
+          playSound('fire_sweep', px, py);
           break;
         case AttackPattern.Nova:
           fireNova(world, wo.owner, ownerTransform, weapon);
+          playSound('fire_nova', px, py, isCaster);
           break;
         case AttackPattern.Chain:
           fireChain(world, wo.owner, ownerTransform, weapon);
+          playSound('fire_chain', px, py);
           break;
         case AttackPattern.Boomerang:
           fireBoomerang(world, wo.owner, ownerTransform, weapon);
+          playSound('fire_boomerang', px, py);
           break;
         case AttackPattern.GroundZone:
           fireGroundZone(world, wo.owner, ownerTransform, weapon);
+          playSound('fire_ground_zone', px, py);
           break;
         case AttackPattern.RunicBarrage:
           fireRunicBarrage(world, wo.owner, ownerTransform, weapon);
+          playSound('fire_runic', px, py);
           break;
         case AttackPattern.Beam:
           fireBeam(world, wo.owner, ownerTransform, weapon);
+          playSound('fire_beam', px, py);
           break;
         case AttackPattern.Spiral:
           fireSpiral(world, wo.owner, ownerTransform, weapon);
+          playSound('fire_spiral', px, py);
           break;
       }
     }

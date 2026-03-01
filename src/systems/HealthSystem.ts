@@ -5,6 +5,7 @@ import type { Health, Enemy, Player, Transform, Collider, Renderable, NovaAttack
 import { emitParticles } from '../rendering/particles';
 import { addScreenShake, triggerHitPause, type ScreenShake, type HitPause } from '../rendering/effects';
 import { PARTICLE_DEATH_COUNT_MIN, PARTICLE_DEATH_COUNT_MAX, HIT_PAUSE_DURATION, EliteAffix, EnemyType, EnemyAIState } from '../constants';
+import { playSound } from '../audio/audio';
 
 export let screenShakeRef: ScreenShake | null = null;
 export let hitPauseRef: HitPause | null = null;
@@ -35,10 +36,13 @@ export const HealthSystem: System = {
           size: 3,
         });
 
-        // Screen shake for elite kills
-        if (enemy.isElite && screenShakeRef) {
-          addScreenShake(screenShakeRef, 12);
+        // Sound + screen shake for kills
+        if (enemy.isElite) {
+          playSound('elite_death', transform.pos.x, transform.pos.y);
+          if (screenShakeRef) addScreenShake(screenShakeRef, 12);
           if (hitPauseRef) triggerHitPause(hitPauseRef, HIT_PAUSE_DURATION);
+        } else {
+          playSound('enemy_death', transform.pos.x, transform.pos.y);
         }
 
         // Explosive affix: spawn death nova
