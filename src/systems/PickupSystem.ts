@@ -46,9 +46,9 @@ export const PickupSystem: System = {
 
       if (pickup.attracted) {
         const dir = vec2Normalize(vec2Sub(playerT.pos, transform.pos));
-        // Ease in: slow start, accelerates as orb gets closer
+        // Ease in: accelerates as orb gets closer, faster overall pull
         const t = 1 - Math.min(1, dist / magnetR);
-        const speed = 250 + t * t * 400;
+        const speed = 350 + t * t * 600;
         // Track prevPos so render interpolation works smoothly
         transform.prevPos.x = transform.pos.x;
         transform.prevPos.y = transform.pos.y;

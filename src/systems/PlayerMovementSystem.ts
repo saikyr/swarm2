@@ -41,9 +41,15 @@ export const PlayerMovementSystem: System = {
         vel.x = input.moveX * player.dashSpeed;
         vel.y = input.moveY * player.dashSpeed;
       } else {
-        // Normal movement
-        vel.x = input.moveX * player.speed * player.speedMultiplier;
-        vel.y = input.moveY * player.speed * player.speedMultiplier;
+        // Normal movement — apply chill debuff if active
+        let speedMult = player.speedMultiplier;
+        const chilled = (player as any)._chilled;
+        if (chilled && chilled > 0) {
+          (player as any)._chilled = chilled - dt;
+          speedMult *= 0.5;
+        }
+        vel.x = input.moveX * player.speed * speedMult;
+        vel.y = input.moveY * player.speed * speedMult;
       }
 
       // Apply velocity

@@ -110,10 +110,10 @@ export const HealthSystem: System = {
         // Spawn XP orb
         spawnXpOrb(world, transform.pos.x, transform.pos.y, enemy.xpValue);
 
-        // Rare drops: health pickup (~3%) and XP magnet (~1%), elites have higher chance
+        // Rare drops: health pickup and XP magnet, elites have higher chance
         const dropRoll = Math.random();
-        const healthChance = enemy.isElite ? 0.25 : 0.03;
-        const magnetChance = enemy.isElite ? 0.08 : 0.01;
+        const healthChance = enemy.isElite ? 0.15 : 0.015;
+        const magnetChance = enemy.isElite ? 0.05 : 0.005;
         if (dropRoll < healthChance) {
           spawnHealthPickup(world, transform.pos.x, transform.pos.y);
         } else if (dropRoll < healthChance + magnetChance) {
@@ -178,8 +178,8 @@ function spawnHealthPickup(world: World, x: number, y: number): void {
   world.addComponent(entity, PICKUP, {
     type: 'health',
     value: 15,
-    magnetRadius: 80,
-    pickupRadius: 14,
+    magnetRadius: 50,
+    pickupRadius: 8,
     attracted: false,
   });
 }
@@ -208,8 +208,8 @@ function spawnMagnetPickup(world: World, x: number, y: number): void {
   world.addComponent(entity, PICKUP, {
     type: 'magnet',
     value: 0,
-    magnetRadius: 100,
-    pickupRadius: 16,
+    magnetRadius: 60,
+    pickupRadius: 10,
     attracted: false,
   });
 }
@@ -240,8 +240,8 @@ function spawnXpOrb(world: World, x: number, y: number, value: number): void {
   world.addComponent(entity, PICKUP, {
     type: 'xp',
     value,
-    magnetRadius: 60,
-    pickupRadius: 10,
+    magnetRadius: 40,
+    pickupRadius: 6,
     attracted: false,
   });
 }

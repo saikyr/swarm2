@@ -324,7 +324,8 @@ export function render(
 
     const barW = 50;
     const barH = 5;
-    const barY2 = ey - renderable2.radius - 14;
+    // Stack upward: bar → name → affixes, all well above the enemy sprite
+    const barY2 = ey - renderable2.radius - 22;
 
     // Health bar background
     ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
@@ -336,23 +337,25 @@ export function render(
     ctx.fillRect(ex - barW / 2, barY2, barW * hpPct, barH);
 
     // Elite name above bar
+    let labelY = barY2 - 5;
     ctx.textAlign = 'center';
     if (enemy2.eliteName) {
       ctx.fillStyle = '#ffd700';
       ctx.font = 'bold 10px monospace';
-      ctx.fillText(enemy2.eliteName, ex, barY2 - 6);
+      ctx.fillText(enemy2.eliteName, ex, labelY);
+      labelY -= 12;
     }
 
-    // Affix tags below the health bar — readable short names with color coding
+    // Affix tags above the name — readable short names with color coding
     if (enemy2.affixes.length > 0) {
       const affixColors: Record<string, string> = {
         fast: '#ffaa00', tough: '#88aaff', splitting: '#ff66ff',
-        vampiric: '#44ff44', teleporter: '#cc66ff', shielded: '#00ddff',
+        teleporter: '#cc66ff', shielded: '#00ddff',
         explosive: '#ff4400', chilling: '#88eeff',
       };
       const affixLabels: Record<string, string> = {
         fast: 'Fast', tough: 'Tough', splitting: 'Split',
-        vampiric: 'Vamp', teleporter: 'Tele', shielded: 'Shield',
+        teleporter: 'Tele', shielded: 'Shield',
         explosive: 'Boom', chilling: 'Chill',
       };
       ctx.font = 'bold 8px monospace';
@@ -362,7 +365,7 @@ export function render(
         const label = affixLabels[affix] || affix;
         ctx.fillStyle = affixColors[affix] || '#ccc';
         ctx.textAlign = 'left';
-        ctx.fillText(label, ax, barY2 + barH + 10);
+        ctx.fillText(label, ax, labelY);
         ax += ctx.measureText(label).width + 6;
       }
     }

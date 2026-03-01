@@ -106,7 +106,6 @@ export enum EliteAffix {
   Fast = 'fast',
   Tough = 'tough',
   Splitting = 'splitting',
-  Vampiric = 'vampiric',
   Teleporter = 'teleporter',
   Shielded = 'shielded',
   Explosive = 'explosive',

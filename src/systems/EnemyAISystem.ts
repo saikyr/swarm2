@@ -70,11 +70,11 @@ export const EnemyAISystem: System = {
         }
       }
 
-      // Chilling affix: slow nearest player within 80px
+      // Chilling affix: slow nearest player within 80px (applied as a temporary debuff)
       if (enemy.affixes.includes(EliteAffix.Chilling) && nearest.player) {
         const distSq = vec2DistSq(transform.pos, playerPos);
         if (distSq < 80 * 80) {
-          nearest.player.speedMultiplier = Math.max(0.5, nearest.player.speedMultiplier - 0.3 * dt);
+          (nearest.player as any)._chilled = 0.5; // seconds of chill remaining
         }
       }
 

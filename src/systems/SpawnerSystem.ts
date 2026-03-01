@@ -75,14 +75,15 @@ export const SpawnerSystem: System = {
     const hpMult = 1 + (playerCount - 1) * 0.5;
     const batchMult = 1 + (playerCount - 1) * 0.25;
 
-    // Calculate spawn rate (increases over time)
-    const baseRate = 1.0 - Math.min(0.7, minutes * 0.04);
+    // Spawn rate: slow ramp early, accelerates mid-game, floors at 0.25s
+    const baseRate = Math.max(0.25, 0.8 * Math.pow(0.92, minutes));
     runRef.spawnTimer = baseRate / spawnRateMult;
 
-    // How many to spawn
-    const batchSize = Math.floor((1 + minutes * 0.5) * batchMult);
+    // Batch size: gentle start, ramps up exponentially
+    const batchSize = Math.floor(Math.max(2, 2 * Math.pow(1.08, minutes)) * batchMult);
     const currentEnemyCount = world.query(ENEMY).length;
-    const maxEnemies = Math.floor((150 + minutes * 10) * maxEnemiesMult);
+    // Enemy cap: logarithmic early growth, then steady climb
+    const maxEnemies = Math.floor((200 + 80 * Math.pow(minutes, 0.8)) * maxEnemiesMult);
     if (currentEnemyCount >= maxEnemies) return;
 
     let eliteSpawnedThisBatch = false;
@@ -90,14 +91,14 @@ export const SpawnerSystem: System = {
       const type = pickEnemyType(minutes);
       // At most one elite per spawn batch, and respect the cooldown timer
       const canSpawnElite = !eliteSpawnedThisBatch && eliteSpawnCooldown <= 0;
-      const isChampion = canSpawnElite && minutes >= 5 && Math.random() < 0.01;
+      const isChampion = canSpawnElite && minutes >= 3 && Math.random() < 0.01;
       const isElite = isChampion || (canSpawnElite && shouldSpawnElite(minutes));
       const affixes = isElite ? pickAffixes(minutes) : [];
 
       if (isElite) {
         eliteSpawnedThisBatch = true;
-        // Cooldown scales down as game progresses: 15s at minute 2, down to 6s by minute 10+
-        eliteSpawnCooldown = Math.max(6, 15 - minutes);
+        // Cooldown scales down as game progresses: 12s early, down to 5s by late game
+        eliteSpawnCooldown = Math.max(5, 12 - minutes * 0.8);
       }
 
       spawnEnemy(world, playerT.pos.x, playerT.pos.y, type, isElite, affixes, isChampion, hpMult);
@@ -121,9 +122,8 @@ function pickEnemyType(minutes: number): EnemyType {
 }
 
 function shouldSpawnElite(minutes: number): boolean {
-  // Gradual introduction: first elite possible at ~1.5 min, ramping slowly
-  if (minutes < 1.5) return false;
-  const chance = Math.min(0.12, (minutes - 1.5) * 0.01);
+  // Logarithmic curve: quick early introduction, then gradual plateau at ~12%
+  const chance = Math.min(0.12, 0.01 + 0.06 * (1 - Math.exp(-minutes * 0.25)));
   return Math.random() < chance;
 }
 
