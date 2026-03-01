@@ -12,7 +12,7 @@ import {
   type Transform, type Health, type Player, type Weapon, type WeaponOwner,
 } from '../components';
 import { generateUpgradeCards, generateOverclockCards, generateWeaponUnlockCards } from '../data/upgrades';
-import type { UpgradeCard } from '../rendering/ui';
+import type { UpgradeCard, PlayerEndStats } from '../rendering/ui';
 import { drawHUD, drawUpgradeMenu, drawGameOver, drawMenu, drawClassSelect, drawLobby, drawWaitingRoom, getUpgradeCardLayout, getClassCardLayout, type MinimapData } from '../rendering/ui';
 import { render } from '../systems/RenderSystem';
 import { spawnPlayers, WEAPON_UNLOCK_LEVELS, type PlayerConfig, type PlayerData } from './player-manager';
@@ -1130,11 +1130,21 @@ export class Game {
         }
       } else if (state === GameState.GameOver) {
         let kills = 0;
+        const playerStats: PlayerEndStats[] = [];
         for (const pe of this.world.query(PLAYER)) {
           const p = this.world.getComponent<Player>(pe, PLAYER);
-          if (p) { kills += p.kills; break; }
+          if (p) {
+            kills += p.kills;
+            playerStats.push({
+              playerId: p.playerId,
+              kills: p.kills,
+              damageDealt: p.damageDealt,
+              level: p.level,
+            });
+          }
         }
-        drawGameOver(this.cc, this.run, kills);
+        playerStats.sort((a, b) => a.playerId - b.playerId);
+        drawGameOver(this.cc, this.run, kills, playerStats);
       } else if (state === GameState.Paused) {
         this.cc.ctx.save();
         this.cc.ctx.fillStyle = 'rgba(0,0,0,0.5)';

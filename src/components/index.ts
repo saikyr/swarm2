@@ -99,6 +99,7 @@ export interface Player {
   speedMultiplier: number;
   pickupRadiusMultiplier: number;
   chilledTimer: number;
+  damageDealt: number;
 }
 
 export interface Enemy {

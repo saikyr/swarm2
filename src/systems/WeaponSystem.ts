@@ -7,7 +7,7 @@ import {
 } from '../components';
 import type {
   Transform, Weapon, WeaponOwner, Projectile, Velocity, Collider, Renderable,
-  Lifetime, SweepAttack, Trail, NovaAttack, OrbitalProjectile, Health, Enemy,
+  Lifetime, SweepAttack, Trail, NovaAttack, OrbitalProjectile, Health, Enemy, Player,
   BoomerangProjectile, GroundZone, RuneCharge, SpiralProjectile,
 } from '../components';
 import { CollisionLayer } from '../components';
@@ -304,6 +304,8 @@ function fireChain(world: World, owner: number, transform: Transform, weapon: We
       const dmg = weapon.damage * dmgMult * Math.pow(0.7, bounce);
       health.current -= dmg;
       health.lastHitBy = owner;
+      const op = world.getComponent<Player>(owner, PLAYER);
+      if (op) op.damageDealt += dmg;
       world.addComponent(targetEntity, DAMAGE_FLASH, { timer: 0.08, duration: 0.08 });
       const tc = world.getComponent<Collider>(targetEntity, COLLIDER);
       spawnDamageNumber(world, targetPos.x, targetPos.y - (tc?.radius ?? 10), dmg);
@@ -523,6 +525,8 @@ function fireBeam(world: World, owner: number, transform: Transform, weapon: Wea
       const dmg = weapon.damage * dmgMult;
       health.current -= dmg;
       health.lastHitBy = owner;
+      const op = world.getComponent<Player>(owner, PLAYER);
+      if (op) op.damageDealt += dmg;
       world.addComponent(t.entity, DAMAGE_FLASH, { timer: 0.08, duration: 0.08 });
       const tc = world.getComponent<Collider>(t.entity, COLLIDER);
       spawnDamageNumber(world, t.pos.x, t.pos.y - (tc?.radius ?? 10), dmg);

@@ -9,6 +9,12 @@ import type { Lobby } from '../game/lobby';
 import { isTouchDevice } from '../input/touch';
 import { WEAPON_UNLOCK_LEVELS } from '../game/player-manager';
 
+function formatDamage(dmg: number): string {
+  if (dmg >= 1_000_000) return (dmg / 1_000_000).toFixed(1) + 'M';
+  if (dmg >= 1_000) return (dmg / 1_000).toFixed(1) + 'K';
+  return Math.round(dmg).toString();
+}
+
 /** Portrait phone: narrow width + touch */
 function isNarrow(width: number): boolean {
   return isTouchDevice && width < 600;
@@ -470,7 +476,14 @@ export function drawUpgradeMenu(
   ctx.restore();
 }
 
-export function drawGameOver(cc: CanvasContext, run: RunContext, kills: number): void {
+export interface PlayerEndStats {
+  playerId: number;
+  kills: number;
+  damageDealt: number;
+  level: number;
+}
+
+export function drawGameOver(cc: CanvasContext, run: RunContext, kills: number, playerStats?: PlayerEndStats[]): void {
   const { ctx, width, height } = cc;
   const mobile = isNarrow(width);
   const btnW = getMenuButtonWidth(width);
@@ -479,27 +492,60 @@ export function drawGameOver(cc: CanvasContext, run: RunContext, kills: number):
   ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
   ctx.fillRect(0, 0, width, height);
 
+  const isMulti = playerStats && playerStats.length > 1;
+  const baseY = height / 2 - (isMulti ? 100 : 60);
+
   ctx.textAlign = 'center';
   ctx.fillStyle = '#ff4444';
   ctx.font = `bold ${mobile ? 28 : 36}px monospace`;
-  ctx.fillText('GAME OVER', width / 2, height / 2 - 60);
+  ctx.fillText('GAME OVER', width / 2, baseY);
 
   const mins = Math.floor(run.timer / 60);
   const secs = Math.floor(run.timer % 60);
 
   ctx.fillStyle = '#ccc';
   ctx.font = `${mobile ? 13 : 16}px monospace`;
-  ctx.fillText(`Survived: ${mins}:${secs.toString().padStart(2, '0')}`, width / 2, height / 2 - 10);
-  ctx.fillText(`Kills: ${kills}`, width / 2, height / 2 + 20);
-  ctx.fillText(`Wave: ${run.wave}`, width / 2, height / 2 + 50);
-  ctx.fillText(`Currency earned: ${run.currencyEarned}`, width / 2, height / 2 + 80);
+  let y = baseY + 40;
+  ctx.fillText(`Survived: ${mins}:${secs.toString().padStart(2, '0')}`, width / 2, y);
+  y += 24;
+  ctx.fillText(`Kills: ${kills}`, width / 2, y);
+  y += 24;
+  ctx.fillText(`Wave: ${run.wave}`, width / 2, y);
+  y += 24;
+  ctx.fillText(`Currency earned: ${run.currencyEarned}`, width / 2, y);
+  y += 10;
 
+  // Per-player stats (multiplayer)
+  if (isMulti) {
+    y += 20;
+    const slotColors = ['#00ffff', '#ff6699', '#66ff66', '#ffaa33'];
+    ctx.fillStyle = '#888';
+    ctx.font = `bold ${mobile ? 11 : 13}px monospace`;
+    ctx.fillText('PLAYER STATS', width / 2, y);
+    y += 8;
+
+    for (const ps of playerStats) {
+      y += mobile ? 18 : 22;
+      const color = slotColors[ps.playerId] ?? '#fff';
+      const dmgStr = formatDamage(ps.damageDealt);
+
+      ctx.fillStyle = color;
+      ctx.font = `bold ${mobile ? 11 : 13}px monospace`;
+      ctx.fillText(
+        `P${ps.playerId + 1}  Lv.${ps.level}  ${ps.kills} kills  ${dmgStr} dmg`,
+        width / 2, y,
+      );
+    }
+    y += 10;
+  }
+
+  y += 20;
   if (isTouchDevice) {
-    drawMenuButton(ctx, width / 2, height / 2 + 130, btnW, 40, 'CONTINUE', '#888', '#1a1a1a');
+    drawMenuButton(ctx, width / 2, y + 10, btnW, 40, 'CONTINUE', '#888', '#1a1a1a');
   } else {
     ctx.fillStyle = '#888';
     ctx.font = '14px monospace';
-    ctx.fillText('Press ENTER to continue', width / 2, height / 2 + 130);
+    ctx.fillText('Press ENTER to continue', width / 2, y + 10);
   }
 
   ctx.restore();
