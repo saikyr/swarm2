@@ -256,7 +256,7 @@ export function drawUpgradeMenu(
   ctx.fillText('LEVEL UP!', width / 2, height / 2 - 150);
   ctx.font = '14px monospace';
   ctx.fillStyle = '#888';
-  ctx.fillText('Choose an upgrade (1/2/3 or click)', width / 2, height / 2 - 124);
+  ctx.fillText(isTouchDevice ? 'Tap an upgrade to select' : 'Choose an upgrade (1/2/3 or click)', width / 2, height / 2 - 124);
 
   // Cards
   const cardW = 180;
@@ -458,8 +458,8 @@ export function drawLobby(cc: CanvasContext, lobby: Lobby, mode: 'menu' | 'join'
     // Host/Join selection
     ctx.fillStyle = '#fff';
     ctx.font = '18px monospace';
-    ctx.fillText('[1] Host a Game', width / 2, height / 2 - 20);
-    ctx.fillText('[2] Join a Game', width / 2, height / 2 + 20);
+    ctx.fillText(isTouchDevice ? 'Tap above: Host a Game' : '[1] Host a Game', width / 2, height / 2 - 20);
+    ctx.fillText(isTouchDevice ? 'Tap below: Join a Game' : '[2] Join a Game', width / 2, height / 2 + 20);
   } else {
     // Join code input screen
     ctx.fillStyle = '#aaa';
@@ -480,7 +480,7 @@ export function drawLobby(cc: CanvasContext, lobby: Lobby, mode: 'menu' | 'join'
     if (input.length === 4) {
       ctx.fillStyle = '#00ff88';
       ctx.font = '12px monospace';
-      ctx.fillText('Press ENTER to join', width / 2, boxY + boxH + 20);
+      ctx.fillText(isTouchDevice ? 'Tap to join' : 'Press ENTER to join', width / 2, boxY + boxH + 20);
     }
   }
 
@@ -492,7 +492,7 @@ export function drawLobby(cc: CanvasContext, lobby: Lobby, mode: 'menu' | 'join'
 
   ctx.fillStyle = '#555';
   ctx.font = '12px monospace';
-  ctx.fillText('Press ESC to go back', width / 2, height - 40);
+  ctx.fillText(isTouchDevice ? 'Tap bottom to go back' : 'Press ESC to go back', width / 2, height - 40);
 
   ctx.restore();
 }
@@ -537,7 +537,10 @@ export function drawWaitingRoom(cc: CanvasContext, lobby: Lobby, isHost: boolean
     const allReady = lobby.players.length >= 1 && lobby.players.every(p => lobby.classSelections.has(p.playerId));
     ctx.fillStyle = allReady ? '#00ff88' : '#555';
     ctx.font = '16px monospace';
-    ctx.fillText(allReady ? 'Press ENTER to start' : 'Waiting for all players to pick a class...', width / 2, height / 2 + 140);
+    const startText = allReady
+      ? (isTouchDevice ? 'Tap to start' : 'Press ENTER to start')
+      : 'Waiting for all players to pick a class...';
+    ctx.fillText(startText, width / 2, height / 2 + 140);
   } else {
     ctx.fillStyle = '#888';
     ctx.font = '14px monospace';
@@ -546,7 +549,7 @@ export function drawWaitingRoom(cc: CanvasContext, lobby: Lobby, isHost: boolean
 
   ctx.fillStyle = '#555';
   ctx.font = '12px monospace';
-  ctx.fillText('Press ESC to leave', width / 2, height - 40);
+  ctx.fillText(isTouchDevice ? 'Tap bottom to leave' : 'Press ESC to leave', width / 2, height - 40);
 
   ctx.restore();
 }
@@ -621,7 +624,7 @@ export function drawClassSelect(cc: CanvasContext, selectedIndex: number): void 
 
   ctx.fillStyle = '#666';
   ctx.font = '12px monospace';
-  ctx.fillText(isTouchDevice ? 'Tap to select' : 'Press 1 or 2 to select', width / 2, height / 2 + 160);
+  ctx.fillText(isTouchDevice ? 'Tap a class to select' : 'Press 1 or 2 to select', width / 2, height / 2 + 160);
 
   ctx.restore();
 }

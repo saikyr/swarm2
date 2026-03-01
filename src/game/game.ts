@@ -51,7 +51,7 @@ import { setEntityIdOffset } from '../ecs/entity';
 import { spawnBeamFx } from '../rendering/particles';
 import { DAMAGE_NUMBER_RISE_SPEED } from '../constants';
 import type { DamageNumberData, DamageFlash, Transform as TransformType } from '../components';
-import { isTouchDevice, setupTouchListeners, consumeTap, drawTouchControls } from '../input/touch';
+import { isTouchDevice, setupTouchListeners, consumeTap, consumePauseTap, drawTouchControls } from '../input/touch';
 
 export type NetworkRole = 'solo' | 'host' | 'client';
 
@@ -210,8 +210,45 @@ export class Game {
       } else {
         this.handleClassSelected(ClassType.Caster);
       }
+    } else if (state === GameState.Lobby) {
+      this.handleLobbyTap();
+    } else if (state === GameState.WaitingForPlayers) {
+      // Bottom strip → leave; top area → start if host + ready
+      if (this.mouseY > this.cc.height - 60) {
+        this.disconnectNetwork();
+        changeState(this.stateMgr, GameState.Menu);
+      } else if (this.networkRole === 'host' && this.lobby.players.length >= 1 && this.allPlayersReady()) {
+        this.hostStartGame();
+      }
+    } else if (state === GameState.Paused) {
+      changeState(this.stateMgr, GameState.Playing);
     } else if (state === GameState.GameOver) {
       this.endRun();
+    }
+  }
+
+  private handleLobbyTap(): void {
+    if (this.lobbyMode === 'menu') {
+      // Top area → host, bottom area → join
+      if (this.mouseY < this.cc.height * 0.5) {
+        this.createRoom();
+      } else if (this.mouseY < this.cc.height - 60) {
+        // Use prompt for room code entry on mobile
+        const code = window.prompt('Enter 4-character room code:');
+        if (code && code.length === 4) {
+          this.joinRoom(code.toUpperCase());
+        }
+      } else {
+        // Bottom strip → back
+        this.disconnectNetwork();
+        changeState(this.stateMgr, GameState.Menu);
+      }
+    } else {
+      // In join input mode, bottom strip → back to lobby menu
+      if (this.mouseY > this.cc.height - 60) {
+        this.lobbyMode = 'menu';
+        this.lobbyInput = '';
+      }
     }
   }
 
@@ -895,6 +932,11 @@ export class Game {
 
     // Bridge touch taps into mouse click system
     if (isTouchDevice) {
+      // Check pause button tap during gameplay
+      if (consumePauseTap() && this.stateMgr.current === GameState.Playing) {
+        changeState(this.stateMgr, GameState.Paused);
+      }
+
       const tap = consumeTap();
       if (tap) {
         this.mouseX = tap.x;
@@ -1041,7 +1083,7 @@ export class Game {
         this.cc.ctx.fillText('PAUSED', this.cc.width / 2, this.cc.height / 2);
         this.cc.ctx.font = '14px monospace';
         this.cc.ctx.fillStyle = '#888';
-        this.cc.ctx.fillText('Press ESC to resume', this.cc.width / 2, this.cc.height / 2 + 30);
+        this.cc.ctx.fillText(isTouchDevice ? 'Tap to resume' : 'Press ESC to resume', this.cc.width / 2, this.cc.height / 2 + 30);
         this.cc.ctx.restore();
       }
     }
