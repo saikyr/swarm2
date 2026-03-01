@@ -569,7 +569,7 @@ export class Game {
       if (card.type === 'weapon_levelup' && card.weaponId) {
         for (const we of weaponEnts) {
           const w = this.world.getComponent<Weapon>(we, WEAPON);
-          if (w && w.id === card.weaponId && [5, 10, 15].includes(w.level)) {
+          if (w && w.id === card.weaponId && [4, 7, 10].includes(w.level)) {
             const ocCards = generateOverclockCards(w);
             if (ocCards.length > 0) {
               this.upgradeCards = ocCards;

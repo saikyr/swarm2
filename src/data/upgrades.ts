@@ -62,18 +62,18 @@ const STAT_UPGRADE_POOL: UpgradeDef[] = [
   { id: 'pickup_up', name: 'Magnetism', description: 'Pickup radius +25%', rarity: 'common', apply: (w, pe) => modSpecificPlayer(w, pe, p => { p.pickupRadiusMultiplier += 0.25; }) },
   { id: 'atk_speed', name: 'Quick Hands', description: 'All weapons: attack speed +12%', rarity: 'common', apply: (w, pe) => modPlayerWeapons(w, pe, wp => { wp.cooldown *= 0.88; }) },
 
-  // Tag-based (Magic)
-  { id: 'proj_mastery', name: 'Projectile Mastery', description: 'Projectile weapons: +1 piercing', rarity: 'magic', apply: (w, pe) => modTaggedPlayerWeapons(w, pe, 'projectile', wp => { wp.piercing += 1; }) },
-  { id: 'arcane_power', name: 'Arcane Power', description: 'Magic weapons: +20% damage', rarity: 'magic', apply: (w, pe) => modTaggedPlayerWeapons(w, pe, 'magic', wp => { wp.damage *= 1.2; }) },
-  { id: 'melee_fury', name: 'Melee Fury', description: 'Melee weapons: +15% attack speed', rarity: 'magic', apply: (w, pe) => modTaggedPlayerWeapons(w, pe, 'melee', wp => { wp.cooldown *= 0.85; }) },
-  { id: 'hp_regen', name: 'Regeneration', description: 'Heal 15 HP now, +10 max HP', rarity: 'magic', apply: (w, pe) => { const h = getPlayerHealth(w, pe); if (h) { h.max += 10; h.current = Math.min(h.max, h.current + 15); } } },
-  { id: 'big_dmg', name: 'Power Strike', description: 'Damage +30%', rarity: 'magic', apply: (w, pe) => modSpecificPlayer(w, pe, p => { p.damageMultiplier += 0.3; }) },
-  { id: 'range_up', name: 'Long Reach', description: 'All weapons: range +25%', rarity: 'magic', apply: (w, pe) => modPlayerWeapons(w, pe, wp => { wp.range *= 1.25; }) },
-
   // Rare
-  { id: 'proj_speed', name: 'Velocity', description: 'Projectile speed +50%, damage +20%', rarity: 'rare', apply: (w, pe) => modTaggedPlayerWeapons(w, pe, 'projectile', wp => { wp.projectileSpeed *= 1.5; wp.damage *= 1.2; }) },
-  { id: 'dash_boost', name: 'Phantom Dash', description: 'Dash cooldown -40%', rarity: 'rare', apply: (w, pe) => modSpecificPlayer(w, pe, p => { p.dashCooldown *= 0.6; }) },
-  { id: 'glass_cannon', name: 'Glass Cannon', description: 'Damage +60%, Max HP -25%', rarity: 'rare', apply: (w, pe) => { modSpecificPlayer(w, pe, p => { p.damageMultiplier += 0.6; }); const h = getPlayerHealth(w, pe); if (h) { h.max = Math.floor(h.max * 0.75); h.current = Math.min(h.current, h.max); } } },
+  { id: 'proj_mastery', name: 'Projectile Mastery', description: 'Projectile weapons: +1 piercing', rarity: 'rare', apply: (w, pe) => modTaggedPlayerWeapons(w, pe, 'projectile', wp => { wp.piercing += 1; }) },
+  { id: 'arcane_power', name: 'Arcane Power', description: 'Magic weapons: +20% damage', rarity: 'rare', apply: (w, pe) => modTaggedPlayerWeapons(w, pe, 'magic', wp => { wp.damage *= 1.2; }) },
+  { id: 'melee_fury', name: 'Melee Fury', description: 'Melee weapons: +15% attack speed', rarity: 'rare', apply: (w, pe) => modTaggedPlayerWeapons(w, pe, 'melee', wp => { wp.cooldown *= 0.85; }) },
+  { id: 'hp_regen', name: 'Regeneration', description: 'Heal 15 HP now, +10 max HP', rarity: 'rare', apply: (w, pe) => { const h = getPlayerHealth(w, pe); if (h) { h.max += 10; h.current = Math.min(h.max, h.current + 15); } } },
+  { id: 'big_dmg', name: 'Power Strike', description: 'Damage +30%', rarity: 'rare', apply: (w, pe) => modSpecificPlayer(w, pe, p => { p.damageMultiplier += 0.3; }) },
+  { id: 'range_up', name: 'Long Reach', description: 'All weapons: range +25%', rarity: 'rare', apply: (w, pe) => modPlayerWeapons(w, pe, wp => { wp.range *= 1.25; }) },
+
+  // Epic
+  { id: 'proj_speed', name: 'Velocity', description: 'Projectile speed +50%, damage +20%', rarity: 'epic', apply: (w, pe) => modTaggedPlayerWeapons(w, pe, 'projectile', wp => { wp.projectileSpeed *= 1.5; wp.damage *= 1.2; }) },
+  { id: 'dash_boost', name: 'Phantom Dash', description: 'Dash cooldown -40%', rarity: 'epic', apply: (w, pe) => modSpecificPlayer(w, pe, p => { p.dashCooldown *= 0.6; }) },
+  { id: 'glass_cannon', name: 'Glass Cannon', description: 'Damage +60%, Max HP -25%', rarity: 'epic', apply: (w, pe) => { modSpecificPlayer(w, pe, p => { p.damageMultiplier += 0.6; }); const h = getPlayerHealth(w, pe); if (h) { h.max = Math.floor(h.max * 0.75); h.current = Math.min(h.current, h.max); } } },
 
   // Legendary
   { id: 'berserker', name: 'Berserker', description: 'Damage +100%, speed +30%, -30% max HP', rarity: 'legendary', apply: (w, pe) => { modSpecificPlayer(w, pe, p => { p.damageMultiplier += 1.0; p.speedMultiplier += 0.3; }); const h = getPlayerHealth(w, pe); if (h) { h.max = Math.floor(h.max * 0.7); h.current = Math.min(h.current, h.max); } } },
@@ -123,8 +123,8 @@ function buildWeaponLevelupDesc(weapon: Weapon, def: WeaponDef | undefined, next
     }
 
     // Overclock threshold hint
-    if ([5, 10, 15].includes(nextLevel)) {
-      parts.push(nextLevel === 15 ? 'UNSTABLE overclock!' : 'Overclock!');
+    if ([4, 7, 10].includes(nextLevel)) {
+      parts.push(nextLevel === 10 ? 'UNSTABLE overclock!' : 'Overclock!');
     }
   }
 
@@ -161,7 +161,7 @@ export function generateUpgradeCards(world: World, count = 3, playerEntity?: num
           id: cardId,
           name: wRef.name,
           description: buildWeaponLevelupDesc(wRef, def, nextLevel),
-          rarity: nextLevel >= 10 ? 'rare' : nextLevel >= 5 ? 'magic' : 'common',
+          rarity: nextLevel >= 7 ? 'epic' : nextLevel >= 4 ? 'rare' : 'common',
           type: 'weapon_levelup',
           weaponId: wRef.id,
           weaponName: wRef.name,
@@ -239,7 +239,7 @@ export function generateWeaponUnlockCards(world: World, playerEntity: number): U
     id: `unlock_${weapon.id}`,
     name: def.name,
     description: `${def.description}\n${buildWeaponUnlockDesc(def)}`,
-    rarity: 'rare' as Rarity,
+    rarity: 'epic' as Rarity,
     type: 'weapon_unlock' as const,
     weaponId: weapon.id,
     weaponName: def.name,
@@ -247,12 +247,12 @@ export function generateWeaponUnlockCards(world: World, playerEntity: number): U
   }));
 }
 
-// Generate overclock cards for a weapon that just hit level 5/10/15
+// Generate overclock cards for a weapon that just hit level 4/7/10
 export function generateOverclockCards(weapon: Weapon): UpgradeCard[] {
-  const OVERCLOCK_LEVELS = [5, 10, 15];
+  const OVERCLOCK_LEVELS = [4, 7, 10];
   if (!OVERCLOCK_LEVELS.includes(weapon.level)) return [];
 
-  const tier = weapon.level === 15 ? 'unstable' : 'balanced';
+  const tier = weapon.level === 10 ? 'unstable' : 'balanced';
   const available = getOverclocksForWeapon(weapon, tier)
     .filter(oc => !weapon.overclocks.includes(oc.id));
 
@@ -268,7 +268,7 @@ export function generateOverclockCards(weapon: Weapon): UpgradeCard[] {
     id: `oc_${oc.id}`,
     name: oc.name,
     description: oc.description,
-    rarity: (tier === 'unstable' ? 'legendary' : 'rare') as Rarity,
+    rarity: (tier === 'unstable' ? 'legendary' : 'epic') as Rarity,
     type: 'overclock' as const,
     weaponName: wRef.name,
     overclockTier: tier,

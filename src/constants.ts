@@ -56,16 +56,16 @@ export const WAVE_SPAWN_RATE_INCREASE = 0.05;
 // Rarity weights
 export const RARITY_WEIGHTS = {
   common: 0.60,
-  magic: 0.25,
-  rare: 0.12,
+  rare: 0.25,
+  epic: 0.12,
   legendary: 0.03,
 };
 
 // Rarity colors
 export const RARITY_COLORS = {
   common: '#ffffff',
-  magic: '#4488ff',
-  rare: '#ffcc00',
+  rare: '#4488ff',
+  epic: '#ffcc00',
   legendary: '#ff8800',
 };
 
