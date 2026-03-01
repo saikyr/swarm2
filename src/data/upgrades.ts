@@ -197,6 +197,30 @@ export function generateUpgradeCards(world: World, count = 3, playerEntity?: num
   return cards;
 }
 
+export function generateWeaponUnlockCards(world: World, playerEntity: number): UpgradeCard[] {
+  const lockedWeapons: { weapon: Weapon; def: WeaponDef }[] = [];
+  for (const e of world.query(WEAPON, WEAPON_OWNER)) {
+    const wo = world.getComponent<WeaponOwner>(e, WEAPON_OWNER);
+    if (!wo || wo.owner !== playerEntity) continue;
+    const w = world.getComponent<Weapon>(e, WEAPON);
+    if (w && w.locked) {
+      const def = WEAPON_DEFS[w.id];
+      if (def) lockedWeapons.push({ weapon: w, def });
+    }
+  }
+
+  return lockedWeapons.map(({ weapon, def }) => ({
+    id: `unlock_${weapon.id}`,
+    name: def.name,
+    description: def.description,
+    rarity: 'rare' as Rarity,
+    type: 'weapon_unlock' as const,
+    weaponId: weapon.id,
+    weaponName: def.name,
+    apply: () => { weapon.locked = false; },
+  }));
+}
+
 // Generate overclock cards for a weapon that just hit level 6/12/18
 export function generateOverclockCards(weapon: Weapon): UpgradeCard[] {
   const OVERCLOCK_LEVELS = [6, 12, 18];

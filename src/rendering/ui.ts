@@ -13,7 +13,7 @@ export interface UpgradeCard {
   name: string;
   description: string;
   rarity: Rarity;
-  type?: 'stat' | 'weapon_levelup' | 'overclock';
+  type?: 'stat' | 'weapon_levelup' | 'overclock' | 'weapon_unlock';
   weaponId?: string;
   weaponName?: string;
   overclockTier?: 'balanced' | 'unstable';
@@ -229,7 +229,6 @@ export function drawUpgradeMenu(
   mouseX: number,
   mouseY: number,
   mouseClicked: boolean,
-  newWeaponUnlock?: string | null,
 ): number | null {
   const { ctx, width, height } = cc;
   ctx.save();
@@ -238,25 +237,18 @@ export function drawUpgradeMenu(
   ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
   ctx.fillRect(0, 0, width, height);
 
-  // Weapon unlock notification banner
-  if (newWeaponUnlock) {
-    ctx.fillStyle = '#44aaff';
-    ctx.font = 'bold 16px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText(`NEW WEAPON UNLOCKED: ${newWeaponUnlock}`, width / 2, height / 2 - 190);
-    ctx.fillStyle = '#88ccff';
-    ctx.font = '11px monospace';
-    ctx.fillText('It will auto-fire when enemies are in range', width / 2, height / 2 - 172);
-  }
-
-  // Title
-  ctx.fillStyle = '#fff';
+  // Title — context-dependent for weapon unlock vs normal upgrade
+  const isWeaponUnlock = cards.length > 0 && cards[0].type === 'weapon_unlock';
+  ctx.fillStyle = isWeaponUnlock ? '#44aaff' : '#fff';
   ctx.font = 'bold 28px monospace';
   ctx.textAlign = 'center';
-  ctx.fillText('LEVEL UP!', width / 2, height / 2 - 150);
+  ctx.fillText(isWeaponUnlock ? 'NEW WEAPON!' : 'LEVEL UP!', width / 2, height / 2 - 150);
   ctx.font = '14px monospace';
   ctx.fillStyle = '#888';
-  ctx.fillText(isTouchDevice ? 'Tap an upgrade to select' : 'Choose an upgrade (1/2/3 or click)', width / 2, height / 2 - 124);
+  const hint = isWeaponUnlock
+    ? (isTouchDevice ? 'Tap a weapon to unlock' : 'Choose a weapon to unlock (1/2/3 or click)')
+    : (isTouchDevice ? 'Tap an upgrade to select' : 'Choose an upgrade (1/2/3 or click)');
+  ctx.fillText(hint, width / 2, height / 2 - 124);
 
   // Cards
   const cardW = 180;
@@ -284,7 +276,9 @@ export function drawUpgradeMenu(
     let bgColor = isSelected || isHovered ? '#2a2a3a' : '#1a1a2a';
     let borderWidth = isSelected || isHovered ? 3 : 1.5;
 
-    if (card.type === 'weapon_levelup') {
+    if (card.type === 'weapon_unlock') {
+      borderColor = '#44aaff';
+    } else if (card.type === 'weapon_levelup') {
       borderColor = '#44aaff';
     } else if (card.overclockTier === 'balanced') {
       borderColor = '#ffd700';
@@ -309,7 +303,12 @@ export function drawUpgradeMenu(
     ctx.stroke();
 
     // Type indicator icon
-    if (card.type === 'weapon_levelup') {
+    if (card.type === 'weapon_unlock') {
+      ctx.fillStyle = '#44aaff';
+      ctx.font = '12px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('UNLOCK', drawX + drawW / 2, drawY + 18);
+    } else if (card.type === 'weapon_levelup') {
       ctx.fillStyle = '#44aaff';
       ctx.font = '12px monospace';
       ctx.textAlign = 'center';

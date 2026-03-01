@@ -11,7 +11,7 @@ import {
   DAMAGE_NUMBER, SWEEP_ATTACK, NOVA_ATTACK, ORBITAL, BEAM_ATTACK, BOOMERANG, GROUND_ZONE, RUNE_CHARGE, REVIVE_ZONE,
   type Transform, type Health, type Player, type Weapon, type WeaponOwner,
 } from '../components';
-import { generateUpgradeCards, generateOverclockCards } from '../data/upgrades';
+import { generateUpgradeCards, generateOverclockCards, generateWeaponUnlockCards } from '../data/upgrades';
 import type { UpgradeCard } from '../rendering/ui';
 import { drawHUD, drawUpgradeMenu, drawGameOver, drawMenu, drawClassSelect, drawLobby, drawWaitingRoom, type MinimapData } from '../rendering/ui';
 import { render } from '../systems/RenderSystem';
@@ -73,7 +73,6 @@ export class Game {
   private mouseY = 0;
   private mouseClicked = false;
   private weaponSlotData: Weapon[] = [];
-  private newlyUnlockedWeapon: string | null = null; // weapon name to show as notification
 
   // Multi-player state
   localPlayerId = 0;
@@ -426,23 +425,29 @@ export class Game {
     return this.playerData.get(this.localPlayerId);
   }
 
-  private checkWeaponUnlocks(): void {
-    for (const [, pd] of this.playerData) {
-      const player = this.world.getComponent<Player>(pd.entity, PLAYER);
-      if (!player) continue;
+  /** Check if this player has earned a weapon unlock slot at their current level */
+  private hasWeaponUnlockAvailable(playerEntity: number): boolean {
+    const player = this.world.getComponent<Player>(playerEntity, PLAYER);
+    if (!player) return false;
 
-      for (const we of pd.weaponEntities) {
-        const weapon = this.world.getComponent<Weapon>(we, WEAPON);
-        const wo = this.world.getComponent<WeaponOwner>(we, WEAPON_OWNER);
-        if (!weapon || !wo) continue;
+    // Find this player's weapon data
+    let pd: PlayerData | undefined;
+    for (const [, d] of this.playerData) {
+      if (d.entity === playerEntity) { pd = d; break; }
+    }
+    if (!pd) return false;
 
-        const unlockLevel = WEAPON_UNLOCK_LEVELS[wo.slotIndex] ?? 999;
-        if (weapon.locked && player.level >= unlockLevel) {
-          weapon.locked = false;
-          this.newlyUnlockedWeapon = weapon.name;
-        }
+    for (const we of pd.weaponEntities) {
+      const weapon = this.world.getComponent<Weapon>(we, WEAPON);
+      const wo = this.world.getComponent<WeaponOwner>(we, WEAPON_OWNER);
+      if (!weapon || !wo) continue;
+
+      const unlockLevel = WEAPON_UNLOCK_LEVELS[wo.slotIndex] ?? 999;
+      if (weapon.locked && player.level >= unlockLevel) {
+        return true;
       }
     }
+    return false;
   }
 
   private onLevelUp(playerEntity: number): void {
@@ -452,8 +457,11 @@ export class Game {
     if (!player) return;
 
     if (this.networkRole === 'solo') {
-      this.checkWeaponUnlocks();
-      this.upgradeCards = generateUpgradeCards(this.world, 3, playerEntity);
+      if (this.hasWeaponUnlockAvailable(playerEntity)) {
+        this.upgradeCards = generateWeaponUnlockCards(this.world, playerEntity);
+      } else {
+        this.upgradeCards = generateUpgradeCards(this.world, 3, playerEntity);
+      }
       this.selectedUpgrade = 0;
       this.upgradingPlayerId = player.playerId;
       this.mouseClicked = false; // Clear stale clicks to prevent auto-selecting an upgrade
@@ -482,8 +490,11 @@ export class Game {
     const pd = this.playerData.get(playerId);
     if (!pd) { this.processNextUpgrade(); return; }
 
-    this.checkWeaponUnlocks();
-    this.upgradeCards = generateUpgradeCards(this.world, 3, pd.entity);
+    if (this.hasWeaponUnlockAvailable(pd.entity)) {
+      this.upgradeCards = generateWeaponUnlockCards(this.world, pd.entity);
+    } else {
+      this.upgradeCards = generateUpgradeCards(this.world, 3, pd.entity);
+    }
     this.selectedUpgrade = 0;
 
     if (playerId === this.localPlayerId) {
@@ -925,7 +936,6 @@ export class Game {
       updateScreenShake(this.screenShake, rawDt);
 
       if (this.networkRole !== 'client') {
-        this.checkWeaponUnlocks();
         this.checkAllPlayersDead();
       }
     }
@@ -1058,9 +1068,8 @@ export class Game {
 
       if (state === GameState.Upgrading) {
         if (this.upgradingPlayerId === this.localPlayerId || this.networkRole === 'solo') {
-          const clicked = drawUpgradeMenu(this.cc, this.upgradeCards, this.selectedUpgrade, this.mouseX, this.mouseY, this.mouseClicked, this.newlyUnlockedWeapon);
+          const clicked = drawUpgradeMenu(this.cc, this.upgradeCards, this.selectedUpgrade, this.mouseX, this.mouseY, this.mouseClicked);
           if (clicked !== null) {
-            this.newlyUnlockedWeapon = null;
             this.pickUpgrade(clicked);
           }
         } else {
