@@ -8,12 +8,34 @@ import type { World } from '../ecs/ecs';
 import type { Lobby } from '../game/lobby';
 import { isTouchDevice } from '../input/touch';
 
+function drawMenuButton(
+  ctx: CanvasRenderingContext2D,
+  cx: number, cy: number, w: number, h: number,
+  label: string, color: string, bgColor: string,
+): void {
+  const x = cx - w / 2;
+  const y = cy - h / 2;
+  ctx.fillStyle = bgColor;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, 8);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = color;
+  ctx.font = 'bold 16px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, cx, cy);
+  ctx.textBaseline = 'alphabetic';
+}
+
 export interface UpgradeCard {
   id: string;
   name: string;
   description: string;
   rarity: Rarity;
-  type?: 'stat' | 'weapon_levelup' | 'overclock';
+  type?: 'stat' | 'weapon_levelup' | 'overclock' | 'weapon_unlock';
   weaponId?: string;
   weaponName?: string;
   overclockTier?: 'balanced' | 'unstable';
@@ -229,7 +251,6 @@ export function drawUpgradeMenu(
   mouseX: number,
   mouseY: number,
   mouseClicked: boolean,
-  newWeaponUnlock?: string | null,
 ): number | null {
   const { ctx, width, height } = cc;
   ctx.save();
@@ -238,25 +259,18 @@ export function drawUpgradeMenu(
   ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
   ctx.fillRect(0, 0, width, height);
 
-  // Weapon unlock notification banner
-  if (newWeaponUnlock) {
-    ctx.fillStyle = '#44aaff';
-    ctx.font = 'bold 16px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText(`NEW WEAPON UNLOCKED: ${newWeaponUnlock}`, width / 2, height / 2 - 190);
-    ctx.fillStyle = '#88ccff';
-    ctx.font = '11px monospace';
-    ctx.fillText('It will auto-fire when enemies are in range', width / 2, height / 2 - 172);
-  }
-
-  // Title
-  ctx.fillStyle = '#fff';
+  // Title — context-dependent for weapon unlock vs normal upgrade
+  const isWeaponUnlock = cards.length > 0 && cards[0].type === 'weapon_unlock';
+  ctx.fillStyle = isWeaponUnlock ? '#44aaff' : '#fff';
   ctx.font = 'bold 28px monospace';
   ctx.textAlign = 'center';
-  ctx.fillText('LEVEL UP!', width / 2, height / 2 - 150);
+  ctx.fillText(isWeaponUnlock ? 'NEW WEAPON!' : 'LEVEL UP!', width / 2, height / 2 - 150);
   ctx.font = '14px monospace';
   ctx.fillStyle = '#888';
-  ctx.fillText(isTouchDevice ? 'Tap an upgrade to select' : 'Choose an upgrade (1/2/3 or click)', width / 2, height / 2 - 124);
+  const hint = isWeaponUnlock
+    ? (isTouchDevice ? 'Tap a weapon to unlock' : 'Choose a weapon to unlock (1/2/3 or click)')
+    : (isTouchDevice ? 'Tap an upgrade to select' : 'Choose an upgrade (1/2/3 or click)');
+  ctx.fillText(hint, width / 2, height / 2 - 124);
 
   // Cards
   const cardW = 180;
@@ -284,7 +298,9 @@ export function drawUpgradeMenu(
     let bgColor = isSelected || isHovered ? '#2a2a3a' : '#1a1a2a';
     let borderWidth = isSelected || isHovered ? 3 : 1.5;
 
-    if (card.type === 'weapon_levelup') {
+    if (card.type === 'weapon_unlock') {
+      borderColor = '#44aaff';
+    } else if (card.type === 'weapon_levelup') {
       borderColor = '#44aaff';
     } else if (card.overclockTier === 'balanced') {
       borderColor = '#ffd700';
@@ -309,7 +325,12 @@ export function drawUpgradeMenu(
     ctx.stroke();
 
     // Type indicator icon
-    if (card.type === 'weapon_levelup') {
+    if (card.type === 'weapon_unlock') {
+      ctx.fillStyle = '#44aaff';
+      ctx.font = '12px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('UNLOCK', drawX + drawW / 2, drawY + 18);
+    } else if (card.type === 'weapon_levelup') {
       ctx.fillStyle = '#44aaff';
       ctx.font = '12px monospace';
       ctx.textAlign = 'center';
@@ -388,9 +409,13 @@ export function drawGameOver(cc: CanvasContext, run: RunContext, kills: number):
   ctx.fillText(`Wave: ${run.wave}`, width / 2, height / 2 + 50);
   ctx.fillText(`Currency earned: ${run.currencyEarned}`, width / 2, height / 2 + 80);
 
-  ctx.fillStyle = '#888';
-  ctx.font = '14px monospace';
-  ctx.fillText(isTouchDevice ? 'Tap to continue' : 'Press ENTER to continue', width / 2, height / 2 + 130);
+  if (isTouchDevice) {
+    drawMenuButton(ctx, width / 2, height / 2 + 130, 220, 40, 'CONTINUE', '#888', '#1a1a1a');
+  } else {
+    ctx.fillStyle = '#888';
+    ctx.font = '14px monospace';
+    ctx.fillText('Press ENTER to continue', width / 2, height / 2 + 130);
+  }
 
   ctx.restore();
 }
@@ -414,13 +439,19 @@ export function drawMenu(cc: CanvasContext): void {
   ctx.font = '14px monospace';
   ctx.fillText('A Vampire Survivors-Style Game', width / 2, height / 2 - 20);
 
-  ctx.fillStyle = '#fff';
-  ctx.font = '16px monospace';
-  ctx.fillText(isTouchDevice ? 'Tap for Solo' : 'Press ENTER for Solo', width / 2, height / 2 + 40);
+  if (isTouchDevice) {
+    // Draw tappable buttons on mobile
+    drawMenuButton(ctx, width / 2, height / 2 + 30, 220, 40, 'SOLO PLAY', '#fff', '#222');
+    drawMenuButton(ctx, width / 2, height / 2 + 85, 220, 40, 'MULTIPLAYER', '#00cc88', '#0a1a14');
+  } else {
+    ctx.fillStyle = '#fff';
+    ctx.font = '16px monospace';
+    ctx.fillText('Press ENTER for Solo', width / 2, height / 2 + 40);
 
-  ctx.fillStyle = '#00cc88';
-  ctx.font = '16px monospace';
-  ctx.fillText(isTouchDevice ? 'Tap below for Multiplayer' : 'Press M for Multiplayer', width / 2, height / 2 + 70);
+    ctx.fillStyle = '#00cc88';
+    ctx.font = '16px monospace';
+    ctx.fillText('Press M for Multiplayer', width / 2, height / 2 + 70);
+  }
 
   ctx.fillStyle = '#666';
   ctx.font = '12px monospace';
@@ -456,10 +487,15 @@ export function drawLobby(cc: CanvasContext, lobby: Lobby, mode: 'menu' | 'join'
     ctx.fillText('Share this code with friends', width / 2, height / 2 - 35);
   } else if (mode === 'menu') {
     // Host/Join selection
-    ctx.fillStyle = '#fff';
-    ctx.font = '18px monospace';
-    ctx.fillText(isTouchDevice ? 'Tap above: Host a Game' : '[1] Host a Game', width / 2, height / 2 - 20);
-    ctx.fillText(isTouchDevice ? 'Tap below: Join a Game' : '[2] Join a Game', width / 2, height / 2 + 20);
+    if (isTouchDevice) {
+      drawMenuButton(ctx, width / 2, height / 2 - 20, 220, 40, 'HOST GAME', '#fff', '#222');
+      drawMenuButton(ctx, width / 2, height / 2 + 30, 220, 40, 'JOIN GAME', '#00cc88', '#0a1a14');
+    } else {
+      ctx.fillStyle = '#fff';
+      ctx.font = '18px monospace';
+      ctx.fillText('[1] Host a Game', width / 2, height / 2 - 20);
+      ctx.fillText('[2] Join a Game', width / 2, height / 2 + 20);
+    }
   } else {
     // Join code input screen
     ctx.fillStyle = '#aaa';
@@ -490,9 +526,13 @@ export function drawLobby(cc: CanvasContext, lobby: Lobby, mode: 'menu' | 'join'
     ctx.fillText(error, width / 2, height / 2 + 160);
   }
 
-  ctx.fillStyle = '#555';
-  ctx.font = '12px monospace';
-  ctx.fillText(isTouchDevice ? 'Tap bottom to go back' : 'Press ESC to go back', width / 2, height - 40);
+  if (isTouchDevice) {
+    drawMenuButton(ctx, width / 2, height - 40, 180, 36, 'BACK', '#555', '#111');
+  } else {
+    ctx.fillStyle = '#555';
+    ctx.font = '12px monospace';
+    ctx.fillText('Press ESC to go back', width / 2, height - 40);
+  }
 
   ctx.restore();
 }
@@ -535,21 +575,33 @@ export function drawWaitingRoom(cc: CanvasContext, lobby: Lobby, isHost: boolean
 
   if (isHost) {
     const allReady = lobby.players.length >= 1 && lobby.players.every(p => lobby.classSelections.has(p.playerId));
-    ctx.fillStyle = allReady ? '#00ff88' : '#555';
-    ctx.font = '16px monospace';
-    const startText = allReady
-      ? (isTouchDevice ? 'Tap to start' : 'Press ENTER to start')
-      : 'Waiting for all players to pick a class...';
-    ctx.fillText(startText, width / 2, height / 2 + 140);
+    if (isTouchDevice) {
+      if (allReady) {
+        drawMenuButton(ctx, width / 2, height / 2 + 130, 220, 40, 'START GAME', '#00ff88', '#0a1a0a');
+      } else {
+        ctx.fillStyle = '#555';
+        ctx.font = '14px monospace';
+        ctx.fillText('Waiting for all players...', width / 2, height / 2 + 130);
+      }
+    } else {
+      ctx.fillStyle = allReady ? '#00ff88' : '#555';
+      ctx.font = '16px monospace';
+      const startText = allReady ? 'Press ENTER to start' : 'Waiting for all players to pick a class...';
+      ctx.fillText(startText, width / 2, height / 2 + 140);
+    }
   } else {
     ctx.fillStyle = '#888';
     ctx.font = '14px monospace';
     ctx.fillText('Waiting for host to start...', width / 2, height / 2 + 140);
   }
 
-  ctx.fillStyle = '#555';
-  ctx.font = '12px monospace';
-  ctx.fillText(isTouchDevice ? 'Tap bottom to leave' : 'Press ESC to leave', width / 2, height - 40);
+  if (isTouchDevice) {
+    drawMenuButton(ctx, width / 2, height - 40, 180, 36, 'LEAVE', '#555', '#111');
+  } else {
+    ctx.fillStyle = '#555';
+    ctx.font = '12px monospace';
+    ctx.fillText('Press ESC to leave', width / 2, height - 40);
+  }
 
   ctx.restore();
 }

@@ -11,7 +11,7 @@ import {
   DAMAGE_NUMBER, SWEEP_ATTACK, NOVA_ATTACK, ORBITAL, BEAM_ATTACK, BOOMERANG, GROUND_ZONE, RUNE_CHARGE, REVIVE_ZONE,
   type Transform, type Health, type Player, type Weapon, type WeaponOwner,
 } from '../components';
-import { generateUpgradeCards, generateOverclockCards } from '../data/upgrades';
+import { generateUpgradeCards, generateOverclockCards, generateWeaponUnlockCards } from '../data/upgrades';
 import type { UpgradeCard } from '../rendering/ui';
 import { drawHUD, drawUpgradeMenu, drawGameOver, drawMenu, drawClassSelect, drawLobby, drawWaitingRoom, type MinimapData } from '../rendering/ui';
 import { render } from '../systems/RenderSystem';
@@ -51,7 +51,7 @@ import { setEntityIdOffset } from '../ecs/entity';
 import { spawnBeamFx } from '../rendering/particles';
 import { DAMAGE_NUMBER_RISE_SPEED } from '../constants';
 import type { DamageNumberData, DamageFlash, Transform as TransformType } from '../components';
-import { isTouchDevice, setupTouchListeners, consumeTap, consumePauseTap, drawTouchControls } from '../input/touch';
+import { isTouchDevice, setupTouchListeners, consumeTap, consumePauseTap, setTouchMode, drawTouchControls } from '../input/touch';
 
 export type NetworkRole = 'solo' | 'host' | 'client';
 
@@ -73,7 +73,6 @@ export class Game {
   private mouseY = 0;
   private mouseClicked = false;
   private weaponSlotData: Weapon[] = [];
-  private newlyUnlockedWeapon: string | null = null; // weapon name to show as notification
 
   // Multi-player state
   localPlayerId = 0;
@@ -194,31 +193,49 @@ export class Game {
     });
   }
 
+  /** Check if a tap at (mouseX, mouseY) hits a button centered at (cx, cy) with size (w, h) */
+  private hitButton(cx: number, cy: number, w: number, h: number): boolean {
+    return Math.abs(this.mouseX - cx) <= w / 2 && Math.abs(this.mouseY - cy) <= h / 2;
+  }
+
   private handleMenuTap(): void {
     const state = this.stateMgr.current;
+    const { width, height } = this.cc;
+
     if (state === GameState.Menu) {
-      // Top half → solo, bottom half → multiplayer
-      if (this.mouseY < this.cc.height * 0.55) {
+      // Solo button: center (width/2, height/2 + 30), 220x40
+      if (this.hitButton(width / 2, height / 2 + 30, 220, 40)) {
         changeState(this.stateMgr, GameState.ClassSelect);
-      } else {
+      // Multiplayer button: center (width/2, height/2 + 85), 220x40
+      } else if (this.hitButton(width / 2, height / 2 + 85, 220, 40)) {
         changeState(this.stateMgr, GameState.Lobby);
       }
     } else if (state === GameState.ClassSelect) {
-      // Left half → warrior, right half → caster
-      if (this.mouseX < this.cc.width / 2) {
-        this.handleClassSelected(ClassType.Warrior);
-      } else {
-        this.handleClassSelected(ClassType.Caster);
+      // Class cards are drawn at known positions — use card hit testing
+      // Card layout: 200px wide, 40px gap, centered; cardY = height/2 - 60, cardH = 180
+      const cardW = 200, gap = 40, cardH = 180;
+      const totalW = 2 * cardW + gap;
+      const startX = (width - totalW) / 2;
+      const cardY = height / 2 - 60;
+      if (this.mouseY >= cardY && this.mouseY <= cardY + cardH) {
+        if (this.mouseX >= startX && this.mouseX <= startX + cardW) {
+          this.handleClassSelected(ClassType.Warrior);
+        } else if (this.mouseX >= startX + cardW + gap && this.mouseX <= startX + totalW) {
+          this.handleClassSelected(ClassType.Caster);
+        }
       }
     } else if (state === GameState.Lobby) {
       this.handleLobbyTap();
     } else if (state === GameState.WaitingForPlayers) {
-      // Bottom strip → leave; top area → start if host + ready
-      if (this.mouseY > this.cc.height - 60) {
+      // Start button: center (width/2, height/2 + 130), 220x40
+      if (this.hitButton(width / 2, height / 2 + 130, 220, 40)) {
+        if (this.networkRole === 'host' && this.lobby.players.length >= 1 && this.allPlayersReady()) {
+          this.hostStartGame();
+        }
+      // Back button: center (width/2, height - 40), 180x36
+      } else if (this.hitButton(width / 2, height - 40, 180, 36)) {
         this.disconnectNetwork();
         changeState(this.stateMgr, GameState.Menu);
-      } else if (this.networkRole === 'host' && this.lobby.players.length >= 1 && this.allPlayersReady()) {
-        this.hostStartGame();
       }
     } else if (state === GameState.Paused) {
       changeState(this.stateMgr, GameState.Playing);
@@ -228,24 +245,25 @@ export class Game {
   }
 
   private handleLobbyTap(): void {
+    const { width, height } = this.cc;
     if (this.lobbyMode === 'menu') {
-      // Top area → host, bottom area → join
-      if (this.mouseY < this.cc.height * 0.5) {
+      // Host button: center (width/2, height/2 - 20), 220x40
+      if (this.hitButton(width / 2, height / 2 - 20, 220, 40)) {
         this.createRoom();
-      } else if (this.mouseY < this.cc.height - 60) {
-        // Use prompt for room code entry on mobile
+      // Join button: center (width/2, height/2 + 30), 220x40
+      } else if (this.hitButton(width / 2, height / 2 + 30, 220, 40)) {
         const code = window.prompt('Enter 4-character room code:');
         if (code && code.length === 4) {
           this.joinRoom(code.toUpperCase());
         }
-      } else {
-        // Bottom strip → back
+      // Back button: center (width/2, height - 40), 180x36
+      } else if (this.hitButton(width / 2, height - 40, 180, 36)) {
         this.disconnectNetwork();
         changeState(this.stateMgr, GameState.Menu);
       }
     } else {
-      // In join input mode, bottom strip → back to lobby menu
-      if (this.mouseY > this.cc.height - 60) {
+      // Back button in join input mode
+      if (this.hitButton(width / 2, height - 40, 180, 36)) {
         this.lobbyMode = 'menu';
         this.lobbyInput = '';
       }
@@ -426,23 +444,29 @@ export class Game {
     return this.playerData.get(this.localPlayerId);
   }
 
-  private checkWeaponUnlocks(): void {
-    for (const [, pd] of this.playerData) {
-      const player = this.world.getComponent<Player>(pd.entity, PLAYER);
-      if (!player) continue;
+  /** Check if this player has earned a weapon unlock slot at their current level */
+  private hasWeaponUnlockAvailable(playerEntity: number): boolean {
+    const player = this.world.getComponent<Player>(playerEntity, PLAYER);
+    if (!player) return false;
 
-      for (const we of pd.weaponEntities) {
-        const weapon = this.world.getComponent<Weapon>(we, WEAPON);
-        const wo = this.world.getComponent<WeaponOwner>(we, WEAPON_OWNER);
-        if (!weapon || !wo) continue;
+    // Find this player's weapon data
+    let pd: PlayerData | undefined;
+    for (const [, d] of this.playerData) {
+      if (d.entity === playerEntity) { pd = d; break; }
+    }
+    if (!pd) return false;
 
-        const unlockLevel = WEAPON_UNLOCK_LEVELS[wo.slotIndex] ?? 999;
-        if (weapon.locked && player.level >= unlockLevel) {
-          weapon.locked = false;
-          this.newlyUnlockedWeapon = weapon.name;
-        }
+    for (const we of pd.weaponEntities) {
+      const weapon = this.world.getComponent<Weapon>(we, WEAPON);
+      const wo = this.world.getComponent<WeaponOwner>(we, WEAPON_OWNER);
+      if (!weapon || !wo) continue;
+
+      const unlockLevel = WEAPON_UNLOCK_LEVELS[wo.slotIndex] ?? 999;
+      if (weapon.locked && player.level >= unlockLevel) {
+        return true;
       }
     }
+    return false;
   }
 
   private onLevelUp(playerEntity: number): void {
@@ -452,8 +476,11 @@ export class Game {
     if (!player) return;
 
     if (this.networkRole === 'solo') {
-      this.checkWeaponUnlocks();
-      this.upgradeCards = generateUpgradeCards(this.world, 3, playerEntity);
+      if (this.hasWeaponUnlockAvailable(playerEntity)) {
+        this.upgradeCards = generateWeaponUnlockCards(this.world, playerEntity);
+      } else {
+        this.upgradeCards = generateUpgradeCards(this.world, 3, playerEntity);
+      }
       this.selectedUpgrade = 0;
       this.upgradingPlayerId = player.playerId;
       this.mouseClicked = false; // Clear stale clicks to prevent auto-selecting an upgrade
@@ -482,8 +509,11 @@ export class Game {
     const pd = this.playerData.get(playerId);
     if (!pd) { this.processNextUpgrade(); return; }
 
-    this.checkWeaponUnlocks();
-    this.upgradeCards = generateUpgradeCards(this.world, 3, pd.entity);
+    if (this.hasWeaponUnlockAvailable(pd.entity)) {
+      this.upgradeCards = generateWeaponUnlockCards(this.world, pd.entity);
+    } else {
+      this.upgradeCards = generateUpgradeCards(this.world, 3, pd.entity);
+    }
     this.selectedUpgrade = 0;
 
     if (playerId === this.localPlayerId) {
@@ -925,15 +955,18 @@ export class Game {
       updateScreenShake(this.screenShake, rawDt);
 
       if (this.networkRole !== 'client') {
-        this.checkWeaponUnlocks();
         this.checkAllPlayersDead();
       }
     }
 
     // Bridge touch taps into mouse click system
     if (isTouchDevice) {
+      // Sync touch mode: only use joystick/buttons during active gameplay
+      const state = this.stateMgr.current;
+      setTouchMode(state === GameState.Playing ? 'gameplay' : 'menu');
+
       // Check pause button tap during gameplay
-      if (consumePauseTap() && this.stateMgr.current === GameState.Playing) {
+      if (consumePauseTap() && state === GameState.Playing) {
         changeState(this.stateMgr, GameState.Paused);
       }
 
@@ -1058,9 +1091,8 @@ export class Game {
 
       if (state === GameState.Upgrading) {
         if (this.upgradingPlayerId === this.localPlayerId || this.networkRole === 'solo') {
-          const clicked = drawUpgradeMenu(this.cc, this.upgradeCards, this.selectedUpgrade, this.mouseX, this.mouseY, this.mouseClicked, this.newlyUnlockedWeapon);
+          const clicked = drawUpgradeMenu(this.cc, this.upgradeCards, this.selectedUpgrade, this.mouseX, this.mouseY, this.mouseClicked);
           if (clicked !== null) {
-            this.newlyUnlockedWeapon = null;
             this.pickUpgrade(clicked);
           }
         } else {
