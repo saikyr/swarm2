@@ -194,6 +194,8 @@ function spawnEnemy(
   // Wave scaling
   const waveScale = runRef ? 1 + (runRef.wave - 1) * 0.15 : 1;
   hp *= waveScale;
+  const speedScale = runRef ? 1 + (runRef.wave - 1) * 0.06 : 1;
+  speed *= speedScale;
 
   // Multiplayer HP scaling
   hp *= hpMultiplier;
