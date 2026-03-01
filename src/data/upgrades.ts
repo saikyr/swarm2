@@ -197,6 +197,28 @@ export function generateUpgradeCards(world: World, count = 3, playerEntity?: num
   return cards;
 }
 
+function buildWeaponUnlockDesc(def: WeaponDef): string {
+  const parts: string[] = [];
+
+  // Tags as type indicator
+  const tags = def.tags.map(t => t.charAt(0).toUpperCase() + t.slice(1));
+  parts.push(tags.join(', '));
+
+  // Base stats
+  parts.push(`${Math.round(def.base.damage)} dmg`);
+  if (def.base.cooldown > 0) {
+    parts.push(`${def.base.cooldown.toFixed(1)}s cd`);
+  }
+  if (def.base.count > 1) {
+    parts.push(`x${def.base.count}`);
+  }
+  if (def.base.piercing > 0 && def.base.piercing < 100) {
+    parts.push(`${def.base.piercing} pierce`);
+  }
+
+  return parts.join(' | ');
+}
+
 export function generateWeaponUnlockCards(world: World, playerEntity: number): UpgradeCard[] {
   const lockedWeapons: { weapon: Weapon; def: WeaponDef }[] = [];
   for (const e of world.query(WEAPON, WEAPON_OWNER)) {
@@ -212,7 +234,7 @@ export function generateWeaponUnlockCards(world: World, playerEntity: number): U
   return lockedWeapons.map(({ weapon, def }) => ({
     id: `unlock_${weapon.id}`,
     name: def.name,
-    description: def.description,
+    description: `${def.description}\n${buildWeaponUnlockDesc(def)}`,
     rarity: 'rare' as Rarity,
     type: 'weapon_unlock' as const,
     weaponId: weapon.id,

@@ -359,23 +359,34 @@ export function drawUpgradeMenu(
     ctx.textAlign = 'center';
     ctx.fillText(card.name, drawX + drawW / 2, drawY + 50);
 
-    // Description (word wrap)
-    ctx.fillStyle = '#aaa';
-    ctx.font = '11px monospace';
-    const words = card.description.split(' ');
-    let line = '';
+    // Description (word wrap, supports newlines for multi-section descriptions)
+    const descSections = card.description.split('\n');
     let ly = drawY + 80;
-    for (const word of words) {
-      const test = line + word + ' ';
-      if (ctx.measureText(test).width > drawW - 20) {
-        ctx.fillText(line, drawX + drawW / 2, ly);
-        line = word + ' ';
-        ly += 16;
+    for (let s = 0; s < descSections.length; s++) {
+      // Style: first section is flavor text, subsequent sections are stats
+      if (s > 0) {
+        ly += 6; // Extra spacing before stats
+        ctx.fillStyle = card.type === 'weapon_unlock' ? '#66bbff' : '#ccc';
+        ctx.font = 'bold 10px monospace';
       } else {
-        line = test;
+        ctx.fillStyle = '#aaa';
+        ctx.font = '11px monospace';
       }
+      const words = descSections[s].split(' ');
+      let line = '';
+      for (const word of words) {
+        const test = line + word + ' ';
+        if (ctx.measureText(test).width > drawW - 20) {
+          ctx.fillText(line, drawX + drawW / 2, ly);
+          line = word + ' ';
+          ly += 16;
+        } else {
+          line = test;
+        }
+      }
+      ctx.fillText(line, drawX + drawW / 2, ly);
+      ly += 16;
     }
-    ctx.fillText(line, drawX + drawW / 2, ly);
 
     // Keybind
     ctx.fillStyle = '#666';

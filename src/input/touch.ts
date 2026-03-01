@@ -72,6 +72,10 @@ export function consumeTap(): { x: number; y: number } | null {
   return null;
 }
 
+export function clearPendingTaps(): void {
+  tapFired = false;
+}
+
 export function consumePauseTap(): boolean {
   if (pauseTapped) {
     pauseTapped = false;

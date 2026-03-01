@@ -51,7 +51,7 @@ import { setEntityIdOffset } from '../ecs/entity';
 import { spawnBeamFx } from '../rendering/particles';
 import { DAMAGE_NUMBER_RISE_SPEED } from '../constants';
 import type { DamageNumberData, DamageFlash, Transform as TransformType } from '../components';
-import { isTouchDevice, setupTouchListeners, consumeTap, consumePauseTap, setTouchMode, drawTouchControls } from '../input/touch';
+import { isTouchDevice, setupTouchListeners, consumeTap, consumePauseTap, clearPendingTaps, setTouchMode, drawTouchControls } from '../input/touch';
 
 export type NetworkRole = 'solo' | 'host' | 'client';
 
@@ -72,6 +72,7 @@ export class Game {
   private mouseX = 0;
   private mouseY = 0;
   private mouseClicked = false;
+  private upgradeInputDelay = 0; // frames to ignore clicks after opening upgrade menu
   private weaponSlotData: Weapon[] = [];
 
   // Multi-player state
@@ -302,6 +303,7 @@ export class Game {
           this.handleClassSelected(this.classSelectIndex === 0 ? ClassType.Warrior : ClassType.Caster);
         }
       } else if (state === GameState.Upgrading) {
+        if (this.upgradeInputDelay > 0) return; // Ignore input while delay active
         if (e.code === 'Digit1' && this.upgradeCards.length >= 1) {
           this.pickUpgrade(0);
         } else if (e.code === 'Digit2' && this.upgradeCards.length >= 2) {
@@ -484,6 +486,8 @@ export class Game {
       this.selectedUpgrade = 0;
       this.upgradingPlayerId = player.playerId;
       this.mouseClicked = false; // Clear stale clicks to prevent auto-selecting an upgrade
+      clearPendingTaps(); // Clear buffered touch taps from gameplay
+      this.upgradeInputDelay = 2; // Ignore clicks for 2 frames to prevent stale click auto-selection
       changeState(this.stateMgr, GameState.Upgrading);
     } else if (this.networkRole === 'host') {
       this.upgradeQueue.push(player.playerId);
@@ -518,6 +522,8 @@ export class Game {
 
     if (playerId === this.localPlayerId) {
       this.mouseClicked = false; // Clear stale clicks to prevent auto-selecting an upgrade
+      clearPendingTaps(); // Clear buffered touch taps from gameplay
+      this.upgradeInputDelay = 2;
       changeState(this.stateMgr, GameState.Upgrading);
     } else {
       changeState(this.stateMgr, GameState.Upgrading);
@@ -555,6 +561,8 @@ export class Game {
               this.upgradeCards = ocCards;
               this.selectedUpgrade = 0;
               this.mouseClicked = false;
+              clearPendingTaps();
+              this.upgradeInputDelay = 2;
               if (this.networkRole === 'host' && this.upgradingPlayerId !== this.localPlayerId && this.netHost) {
                 this.netHost.sendToPlayer(this.upgradingPlayerId, {
                   type: MessageType.UpgradeOptions, playerId: this.upgradingPlayerId,
@@ -821,6 +829,8 @@ export class Game {
     this.selectedUpgrade = 0;
     this.upgradingPlayerId = this.localPlayerId;
     this.mouseClicked = false; // Clear stale clicks to prevent auto-selecting an upgrade
+    clearPendingTaps(); // Clear buffered touch taps from gameplay
+    this.upgradeInputDelay = 2;
     changeState(this.stateMgr, GameState.Upgrading);
   }
 
@@ -1091,6 +1101,11 @@ export class Game {
 
       if (state === GameState.Upgrading) {
         if (this.upgradingPlayerId === this.localPlayerId || this.networkRole === 'solo') {
+          // Absorb stale clicks for a few frames after the menu opens
+          if (this.upgradeInputDelay > 0) {
+            this.upgradeInputDelay--;
+            this.mouseClicked = false;
+          }
           const clicked = drawUpgradeMenu(this.cc, this.upgradeCards, this.selectedUpgrade, this.mouseX, this.mouseY, this.mouseClicked);
           if (clicked !== null) {
             this.pickUpgrade(clicked);
