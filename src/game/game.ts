@@ -51,6 +51,7 @@ import { setEntityIdOffset } from '../ecs/entity';
 import { spawnBeamFx } from '../rendering/particles';
 import { DAMAGE_NUMBER_RISE_SPEED } from '../constants';
 import type { DamageNumberData, DamageFlash, Transform as TransformType } from '../components';
+import { isTouchDevice, setupTouchListeners, consumeTap, drawTouchControls } from '../input/touch';
 
 export type NetworkRole = 'solo' | 'host' | 'client';
 
@@ -114,6 +115,9 @@ export class Game {
     this.setupCallbacks();
     this.setupKeyListeners();
     this.setupMouseListeners();
+    if (isTouchDevice) {
+      setupTouchListeners(this.cc.ctx.canvas);
+    }
   }
 
   private registerComponents(): void {
@@ -187,6 +191,27 @@ export class Game {
       this.mouseY = e.clientY - rect.top;
       this.mouseClicked = true;
     });
+  }
+
+  private handleMenuTap(): void {
+    const state = this.stateMgr.current;
+    if (state === GameState.Menu) {
+      // Top half → solo, bottom half → multiplayer
+      if (this.mouseY < this.cc.height * 0.55) {
+        changeState(this.stateMgr, GameState.ClassSelect);
+      } else {
+        changeState(this.stateMgr, GameState.Lobby);
+      }
+    } else if (state === GameState.ClassSelect) {
+      // Left half → warrior, right half → caster
+      if (this.mouseX < this.cc.width / 2) {
+        this.handleClassSelected(ClassType.Warrior);
+      } else {
+        this.handleClassSelected(ClassType.Caster);
+      }
+    } else if (state === GameState.GameOver) {
+      this.endRun();
+    }
   }
 
   private setupKeyListeners(): void {
@@ -857,6 +882,17 @@ export class Game {
       }
     }
 
+    // Bridge touch taps into mouse click system
+    if (isTouchDevice) {
+      const tap = consumeTap();
+      if (tap) {
+        this.mouseX = tap.x;
+        this.mouseY = tap.y;
+        this.mouseClicked = true;
+        this.handleMenuTap();
+      }
+    }
+
     this.renderFrame();
     this.mouseClicked = false;
 
@@ -961,6 +997,11 @@ export class Game {
 
       // Show HUD — for client, find local player from world query
       this.renderHUD();
+
+      // Draw touch controls overlay during gameplay
+      if (isTouchDevice && state === GameState.Playing) {
+        drawTouchControls(this.cc.ctx, this.cc.width, this.cc.height);
+      }
 
       if (state === GameState.Upgrading) {
         if (this.upgradingPlayerId === this.localPlayerId || this.networkRole === 'solo') {

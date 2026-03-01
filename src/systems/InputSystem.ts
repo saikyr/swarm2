@@ -2,6 +2,7 @@ import type { System } from '../ecs/system';
 import type { World } from '../ecs/ecs';
 import { INPUT, PLAYER } from '../components';
 import type { InputState, Player } from '../components';
+import { isTouchDevice, getTouchInput } from '../input/touch';
 
 const keys = new Set<string>();
 
@@ -54,6 +55,17 @@ export const InputSystem: System = {
 
       input.dash = keys.has('Space');
       input.ability = keys.has('ShiftLeft') || keys.has('ShiftRight');
+
+      // Merge touch input when joystick is active
+      if (isTouchDevice) {
+        const touch = getTouchInput();
+        if (touch.moveX !== 0 || touch.moveY !== 0) {
+          input.moveX = touch.moveX;
+          input.moveY = touch.moveY;
+        }
+        input.dash = input.dash || touch.dash;
+        input.ability = input.ability || touch.ability;
+      }
     }
   },
 };
@@ -84,10 +96,18 @@ export function getKeyboardInput(): { moveX: number; moveY: number; dash: boolea
     moveY *= inv;
   }
 
-  return {
-    moveX,
-    moveY,
-    dash: keys.has('Space'),
-    ability: keys.has('ShiftLeft') || keys.has('ShiftRight'),
-  };
+  let dash = keys.has('Space');
+  let ability = keys.has('ShiftLeft') || keys.has('ShiftRight');
+
+  if (isTouchDevice) {
+    const touch = getTouchInput();
+    if (touch.moveX !== 0 || touch.moveY !== 0) {
+      moveX = touch.moveX;
+      moveY = touch.moveY;
+    }
+    dash = dash || touch.dash;
+    ability = ability || touch.ability;
+  }
+
+  return { moveX, moveY, dash, ability };
 }

@@ -6,6 +6,7 @@ import type { RunContext } from '../game/run';
 import type { Vec2 } from '../utils/math';
 import type { World } from '../ecs/ecs';
 import type { Lobby } from '../game/lobby';
+import { isTouchDevice } from '../input/touch';
 
 export interface UpgradeCard {
   id: string;
@@ -371,7 +372,7 @@ export function drawGameOver(cc: CanvasContext, run: RunContext, kills: number):
 
   ctx.fillStyle = '#888';
   ctx.font = '14px monospace';
-  ctx.fillText('Press ENTER to continue', width / 2, height / 2 + 130);
+  ctx.fillText(isTouchDevice ? 'Tap to continue' : 'Press ENTER to continue', width / 2, height / 2 + 130);
 
   ctx.restore();
 }
@@ -397,15 +398,20 @@ export function drawMenu(cc: CanvasContext): void {
 
   ctx.fillStyle = '#fff';
   ctx.font = '16px monospace';
-  ctx.fillText('Press ENTER for Solo', width / 2, height / 2 + 40);
+  ctx.fillText(isTouchDevice ? 'Tap for Solo' : 'Press ENTER for Solo', width / 2, height / 2 + 40);
 
   ctx.fillStyle = '#00cc88';
   ctx.font = '16px monospace';
-  ctx.fillText('Press M for Multiplayer', width / 2, height / 2 + 70);
+  ctx.fillText(isTouchDevice ? 'Tap below for Multiplayer' : 'Press M for Multiplayer', width / 2, height / 2 + 70);
 
   ctx.fillStyle = '#666';
   ctx.font = '12px monospace';
-  ctx.fillText('WASD to move | Auto-aim weapons | Space to dash', width / 2, height / 2 + 110);
+  ctx.fillText(
+    isTouchDevice
+      ? 'Joystick to move | Auto-aim weapons | Tap DASH to dash'
+      : 'WASD to move | Auto-aim weapons | Space to dash',
+    width / 2, height / 2 + 110,
+  );
 
   ctx.restore();
 }
@@ -597,7 +603,7 @@ export function drawClassSelect(cc: CanvasContext, selectedIndex: number): void 
 
   ctx.fillStyle = '#666';
   ctx.font = '12px monospace';
-  ctx.fillText('Press 1 or 2 to select', width / 2, height / 2 + 160);
+  ctx.fillText(isTouchDevice ? 'Tap to select' : 'Press 1 or 2 to select', width / 2, height / 2 + 160);
 
   ctx.restore();
 }
