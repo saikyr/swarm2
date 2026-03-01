@@ -49,6 +49,7 @@ import { Interpolator } from '../net/interpolation';
 import { ClientEffectReactor } from '../net/client-effects';
 import { setEntityIdOffset } from '../ecs/entity';
 import { initAudio, unlockAudio, playSound, suspendAudio, resumeAudio, startAmbientDrone, updateAmbientDrone, stopAmbientDrone } from '../audio/audio';
+import { ClientPredictor } from '../net/client-prediction';
 import { spawnBeamFx } from '../rendering/particles';
 import { DAMAGE_NUMBER_RISE_SPEED } from '../constants';
 import type { DamageNumberData, DamageFlash, Transform as TransformType } from '../components';
@@ -91,6 +92,7 @@ export class Game {
   private snapshotTimer = 0;
   private prevRawSnapshot: SnapshotData | null = null;
   private clientReactor = new ClientEffectReactor();
+  private predictor = new ClientPredictor();
 
   // Upgrade flow for multiplayer
   private upgradingPlayerId = -1;
@@ -752,6 +754,7 @@ export class Game {
   private onRoomCreated(msg: RoomCreatedMsg): void {
     this.lobby.roomCode = msg.roomCode;
     this.localPlayerId = msg.playerId;
+    this.predictor.setLocalPlayerId(msg.playerId);
     this.lobby.players = [{ playerId: msg.playerId, ready: false }];
     changeState(this.stateMgr, GameState.ClassSelect);
   }
@@ -759,6 +762,7 @@ export class Game {
   private onJoinedRoom(msg: JoinedRoomMsg): void {
     this.lobby.roomCode = msg.roomCode;
     this.localPlayerId = msg.playerId;
+    this.predictor.setLocalPlayerId(msg.playerId);
     this.lobby.players = msg.players.map((p: any) => ({ playerId: p.playerId, ready: false }));
     changeState(this.stateMgr, GameState.ClassSelect);
   }
@@ -930,22 +934,27 @@ export class Game {
 
     if (state === GameState.Playing) {
       if (this.networkRole === 'client') {
-        // Client: apply interpolated snapshots, no ECS simulation
+        // Client: apply interpolated snapshots with client-side prediction
         if (this.interpolator && this.snapshotMgr) {
           this.interpolator.update(rawDt);
           const snapshot = this.interpolator.getInterpolated();
           if (snapshot) {
+            const predictedPos = this.predictor.beforeSnapshot(this.world);
             this.snapshotMgr.applySnapshot(snapshot);
             this.world.flushDestroy();
+            this.predictor.afterSnapshot(this.world, predictedPos);
           }
         }
+
+        // Predict local player movement for instant responsiveness
+        this.predictor.predict(this.world, rawDt);
 
         // Tick client-only visual effects (particles, damage numbers, damage flash)
         ParticleSystem.update(this.world, rawDt);
         this.updateClientEffects(rawDt);
         this.world.flushDestroy();
 
-        // Update camera to follow local player (find by playerId in snapshot data)
+        // Update camera to follow local player (follows predicted position)
         this.updateClientCamera(rawDt);
 
         // Send local input to host — read keyboard directly, don't rely on InputSystem
