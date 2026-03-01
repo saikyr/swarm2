@@ -6,6 +6,9 @@ export class SpatialHash {
   // Track which query generation each entity was last seen in, to avoid Set allocation
   private entityGeneration = new Map<Entity, number>();
   private currentGeneration = 0;
+  // Frame generation — cells with stale frameGen are treated as empty
+  private frameGen = 0;
+  private cellFrameGen = new Map<number, number>();
 
   constructor(private cellSize: number) {}
 
@@ -16,9 +19,15 @@ export class SpatialHash {
   }
 
   clear(): void {
-    this.cells.clear();
-    this.entityGeneration.clear();
+    // Increment frame generation instead of clearing maps — avoids GC pressure
+    this.frameGen++;
     this.currentGeneration = 0;
+    // Periodically do a real clear to avoid unbounded growth from cells that are no longer used
+    if (this.frameGen % 600 === 0) {
+      this.cells.clear();
+      this.cellFrameGen.clear();
+      this.entityGeneration.clear();
+    }
   }
 
   insert(entity: Entity, pos: Vec2, radius: number): void {
@@ -34,7 +43,11 @@ export class SpatialHash {
         if (!cell) {
           cell = [];
           this.cells.set(k, cell);
+        } else if (this.cellFrameGen.get(k) !== this.frameGen) {
+          // Cell exists but is from a previous frame — reuse array by resetting length
+          cell.length = 0;
         }
+        this.cellFrameGen.set(k, this.frameGen);
         cell.push(entity);
       }
     }
@@ -49,10 +62,13 @@ export class SpatialHash {
     this.currentGeneration++;
     const gen = this.currentGeneration;
     const result: Entity[] = [];
+    const fg = this.frameGen;
 
     for (let cx = minCX; cx <= maxCX; cx++) {
       for (let cy = minCY; cy <= maxCY; cy++) {
-        const cell = this.cells.get(this.key(cx, cy));
+        const k = this.key(cx, cy);
+        if (this.cellFrameGen.get(k) !== fg) continue; // stale cell
+        const cell = this.cells.get(k);
         if (cell) {
           for (let i = 0; i < cell.length; i++) {
             const e = cell[i];

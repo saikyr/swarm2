@@ -65,7 +65,7 @@ export function spawnPlayers(
     world.addComponent<Health>(entity, HEALTH, {
       current: PLAYER_HP + meta.permanentBuffs.maxHp,
       max: PLAYER_HP + meta.permanentBuffs.maxHp,
-      iframes: 0,
+      iframes: 0, lastHitBy: 0,
     });
     world.addComponent<Collider>(entity, COLLIDER, {
       radius: PLAYER_RADIUS,

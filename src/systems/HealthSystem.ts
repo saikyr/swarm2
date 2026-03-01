@@ -84,7 +84,7 @@ export const HealthSystem: System = {
             });
             world.addComponent(splitEntity, VELOCITY, { x: 0, y: 0 });
             world.addComponent<Health>(splitEntity, HEALTH, {
-              current: health.max * 0.3, max: health.max * 0.3, iframes: 0.2,
+              current: health.max * 0.3, max: health.max * 0.3, iframes: 0.2, lastHitBy: health.lastHitBy,
             });
             world.addComponent<Collider>(splitEntity, COLLIDER, {
               radius: splitRadius,
@@ -120,10 +120,10 @@ export const HealthSystem: System = {
           }
         }
 
-        // Increment kill count on first player (shared co-op counter)
-        const firstPlayer = world.query(PLAYER)[0];
-        if (firstPlayer !== undefined) {
-          const p = world.getComponent<Player>(firstPlayer, PLAYER);
+        // Credit kill to the player who dealt the killing blow
+        const killer = health.lastHitBy || world.query(PLAYER)[0];
+        if (killer !== undefined) {
+          const p = world.getComponent<Player>(killer, PLAYER);
           if (p) p.kills++;
         }
 

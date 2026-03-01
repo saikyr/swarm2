@@ -258,13 +258,10 @@ function fireChain(world: World, owner: number, transform: Transform, weapon: We
   const chainRangeSq = chainRange * chainRange;
   const hitSet = new Set<number>();
 
-  // Get player damage multiplier
+  // Get player damage multiplier from weapon owner
   let dmgMult = 1;
-  const playerEntities = world.query('player');
-  if (playerEntities.length > 0) {
-    const player = world.getComponent<any>(playerEntities[0], 'player');
-    if (player) dmgMult = player.damageMultiplier;
-  }
+  const ownerPlayer = world.getComponent<any>(owner, PLAYER);
+  if (ownerPlayer) dmgMult = ownerPlayer.damageMultiplier;
 
   // Start from the targeted enemy
   let currentPos = { x: transform.pos.x, y: transform.pos.y };
@@ -306,6 +303,7 @@ function fireChain(world: World, owner: number, transform: Transform, weapon: We
     if (health) {
       const dmg = weapon.damage * dmgMult * Math.pow(0.7, bounce);
       health.current -= dmg;
+      health.lastHitBy = owner;
       world.addComponent(targetEntity, DAMAGE_FLASH, { timer: 0.08, duration: 0.08 });
       const tc = world.getComponent<Collider>(targetEntity, COLLIDER);
       spawnDamageNumber(world, targetPos.x, targetPos.y - (tc?.radius ?? 10), dmg);
@@ -524,6 +522,7 @@ function fireBeam(world: World, owner: number, transform: Transform, weapon: Wea
     if (health) {
       const dmg = weapon.damage * dmgMult;
       health.current -= dmg;
+      health.lastHitBy = owner;
       world.addComponent(t.entity, DAMAGE_FLASH, { timer: 0.08, duration: 0.08 });
       const tc = world.getComponent<Collider>(t.entity, COLLIDER);
       spawnDamageNumber(world, t.pos.x, t.pos.y - (tc?.radius ?? 10), dmg);

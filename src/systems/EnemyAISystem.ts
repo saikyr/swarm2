@@ -427,7 +427,7 @@ function applyAffixes(
     if (enemy.aiState === EnemyAIState.Chase || enemy.aiState === EnemyAIState.Orbit) {
       // Reuse attackTimer for non-Dasher/Brute (they use it for dash direction/cooldown)
       // Use a frame-based random chance instead for safety
-      if (Math.random() < 0.005) { // ~0.5% per frame = avg every ~3.3s at 60fps
+      if (Math.random() < 1 - Math.pow(0.995, dt * 60)) { // ~0.5% per tick at 60fps, frame-rate independent
         const dx = nearest.pos.x - transform.pos.x;
         const dy = nearest.pos.y - transform.pos.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
@@ -453,7 +453,7 @@ function applyAffixes(
   if (enemy.affixes.includes(EliteAffix.Chilling) && nearest.player) {
     const distSq = vec2DistSq(transform.pos, nearest.pos);
     if (distSq < 80 * 80) {
-      (nearest.player as any)._chilled = 0.5;
+      nearest.player.chilledTimer = 0.5;
     }
   }
 }

@@ -196,6 +196,10 @@ export function generateUpgradeCards(world: World, count = 3, playerEntity?: num
     if (pool.length === 0) {
       pool = STAT_UPGRADE_POOL.filter(u => !usedIds.has(u.id) && (!u.targetTag || playerHasWeaponWithTag(world, playerEntity, u.targetTag)));
     }
+    if (pool.length === 0) {
+      // Last resort: allow any unused upgrade regardless of tag matching
+      pool = STAT_UPGRADE_POOL.filter(u => !usedIds.has(u.id));
+    }
     if (pool.length === 0) continue;
 
     const def = pool[Math.floor(Math.random() * pool.length)];

@@ -8,7 +8,7 @@ import { TICK_DT, MAX_FRAME_SKIP, GameState, ClassType, WORLD_WIDTH, WORLD_HEIGH
 import {
   TRANSFORM, VELOCITY, HEALTH, COLLIDER, RENDERABLE, PLAYER, ENEMY, WEAPON,
   WEAPON_OWNER, PROJECTILE, PARTICLE, INPUT, DAMAGE_FLASH, TRAIL, LIFETIME, PICKUP,
-  DAMAGE_NUMBER, SWEEP_ATTACK, NOVA_ATTACK, ORBITAL, BEAM_ATTACK, BOOMERANG, GROUND_ZONE, RUNE_CHARGE, REVIVE_ZONE, SPIRAL_PROJECTILE,
+  DAMAGE_NUMBER, SWEEP_ATTACK, NOVA_ATTACK, ORBITAL, BOOMERANG, GROUND_ZONE, RUNE_CHARGE, REVIVE_ZONE, SPIRAL_PROJECTILE,
   type Transform, type Health, type Player, type Weapon, type WeaponOwner,
 } from '../components';
 import { generateUpgradeCards, generateOverclockCards, generateWeaponUnlockCards } from '../data/upgrades';
@@ -142,7 +142,6 @@ export class Game {
     this.world.registerComponent(SWEEP_ATTACK);
     this.world.registerComponent(NOVA_ATTACK);
     this.world.registerComponent(ORBITAL);
-    this.world.registerComponent(BEAM_ATTACK);
     this.world.registerComponent(BOOMERANG);
     this.world.registerComponent(GROUND_ZONE);
     this.world.registerComponent(RUNE_CHARGE);
@@ -426,7 +425,7 @@ export class Game {
   private startClientGame(): void {
     this.world.clear();
     clearOrbitalTracking();
-    setEntityIdOffset(100000);
+    setEntityIdOffset(1000000);
     this.run = createRunContext();
     setRunRef(this.run);
     resetCamera();
@@ -941,7 +940,7 @@ export class Game {
         this.updateClientCamera(rawDt);
 
         // Send local input to host — read keyboard directly, don't rely on InputSystem
-        this.sendLocalInput();
+        this.sendLocalInput(rawDt);
       } else {
         // Host or Solo: run full ECS simulation
         const paused = updateHitPause(this.hitPause, rawDt);
@@ -1009,9 +1008,14 @@ export class Game {
     requestAnimationFrame((t) => this.loop(t));
   }
 
-  /** Client: read keyboard state directly and send to host */
-  private sendLocalInput(): void {
+  /** Client: read keyboard state directly and send to host (throttled to ~30Hz) */
+  private inputSendTimer = 0;
+  private sendLocalInput(dt: number): void {
     if (!this.netClient) return;
+
+    this.inputSendTimer -= dt;
+    if (this.inputSendTimer > 0) return;
+    this.inputSendTimer = 1 / 30;
 
     // Read keyboard directly — InputSystem doesn't run on client
     const input = getKeyboardInput();

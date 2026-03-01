@@ -63,6 +63,7 @@ export const CollisionSystem: System = {
           if (health) {
             const dmg = proj.damage * dmgMult;
             health.current -= dmg;
+            health.lastHitBy = proj.owner;
             world.addComponent(other, DAMAGE_FLASH, { timer: 0.08, duration: 0.08 });
             spawnDamageNumber(world, otherT.pos.x, otherT.pos.y - otherC.radius, dmg);
             if (screenShakeRef) addScreenShake(screenShakeRef, 2);
@@ -105,6 +106,7 @@ export const CollisionSystem: System = {
         if (health) {
           const dmg = sweep.damage * sweepDmgMult;
           health.current -= dmg;
+          health.lastHitBy = sweep.owner;
           world.addComponent(other, DAMAGE_FLASH, { timer: 0.08, duration: 0.08 });
           spawnDamageNumber(world, otherT.pos.x, otherT.pos.y - (otherC?.radius ?? 10), dmg);
           if (screenShakeRef) addScreenShake(screenShakeRef, 3);
@@ -141,9 +143,12 @@ export const CollisionSystem: System = {
             world.addComponent(other, DAMAGE_FLASH, { timer: 0.1, duration: 0.1 });
             if (screenShakeRef) addScreenShake(screenShakeRef, 5);
           } else {
-            health.current -= nova.damage;
+            const novaDmgMult = getOwnerDmgMult(nova.owner);
+            const dmg = nova.damage * novaDmgMult;
+            health.current -= dmg;
+            health.lastHitBy = nova.owner;
             world.addComponent(other, DAMAGE_FLASH, { timer: 0.08, duration: 0.08 });
-            spawnDamageNumber(world, otherT.pos.x, otherT.pos.y - (otherC?.radius ?? 10), nova.damage);
+            spawnDamageNumber(world, otherT.pos.x, otherT.pos.y - (otherC?.radius ?? 10), dmg);
           }
         }
       }
@@ -181,6 +186,7 @@ export const CollisionSystem: System = {
           } else {
             const dmg = zone.damage * zoneDmgMult;
             health.current -= dmg;
+            health.lastHitBy = zone.owner;
             world.addComponent(other, DAMAGE_FLASH, { timer: 0.08, duration: 0.08 });
             spawnDamageNumber(world, otherT.pos.x, otherT.pos.y - (otherC?.radius ?? 10), dmg);
           }
@@ -212,6 +218,7 @@ export const CollisionSystem: System = {
           if (health) {
             const dmg = proj.damage * orbDmgMult;
             health.current -= dmg;
+            health.lastHitBy = proj.owner;
             world.addComponent(other, DAMAGE_FLASH, { timer: 0.08, duration: 0.08 });
             spawnDamageNumber(world, otherT.pos.x, otherT.pos.y - otherC.radius, dmg);
             if (screenShakeRef) addScreenShake(screenShakeRef, 2);

@@ -225,7 +225,7 @@ function spawnEnemy(
   });
   world.addComponent<Velocity>(entity, VELOCITY, { x: 0, y: 0 });
   world.addComponent<Health>(entity, HEALTH, {
-    current: hp, max: hp, iframes: 0,
+    current: hp, max: hp, iframes: 0, lastHitBy: 0,
   });
   world.addComponent<Collider>(entity, COLLIDER, {
     radius, layer: CollisionLayer.Enemy, mask: [CollisionLayer.PlayerProjectile],
@@ -271,7 +271,7 @@ export function spawnMinionSwarm(
     rotation: 0,
   });
   world.addComponent<Velocity>(entity, VELOCITY, { x: 0, y: 0 });
-  world.addComponent<Health>(entity, HEALTH, { current: hp, max: hp, iframes: 0 });
+  world.addComponent<Health>(entity, HEALTH, { current: hp, max: hp, iframes: 0, lastHitBy: 0 });
   world.addComponent<Collider>(entity, COLLIDER, {
     radius: def.radius, layer: CollisionLayer.Enemy, mask: [CollisionLayer.PlayerProjectile],
   });

@@ -17,13 +17,11 @@ export const INPUT = 'input';
 export const DAMAGE_FLASH = 'damageFlash';
 export const TRAIL = 'trail';
 export const LIFETIME = 'lifetime';
-export const XP_ORB = 'xpOrb';
 export const PICKUP = 'pickup';
 export const DAMAGE_NUMBER = 'damageNumber';
 export const SWEEP_ATTACK = 'sweepAttack';
 export const NOVA_ATTACK = 'novaAttack';
 export const ORBITAL = 'orbital';
-export const BEAM_ATTACK = 'beamAttack';
 export const BOOMERANG = 'boomerang';
 export const GROUND_ZONE = 'groundZone';
 export const RUNE_CHARGE = 'runeCharge';
@@ -54,6 +52,7 @@ export interface Health {
   current: number;
   max: number;
   iframes: number;
+  lastHitBy: number;
 }
 
 export interface Collider {
@@ -99,6 +98,7 @@ export interface Player {
   damageMultiplier: number;
   speedMultiplier: number;
   pickupRadiusMultiplier: number;
+  chilledTimer: number;
 }
 
 export interface Enemy {
@@ -190,9 +190,6 @@ export interface Lifetime {
   remaining: number;
 }
 
-export interface XpOrb {
-  value: number;
-}
 
 export interface Pickup {
   type: 'xp' | 'health' | 'currency' | 'magnet';
@@ -240,17 +237,6 @@ export interface OrbitalProjectile {
   angle: number;
   angularSpeed: number;
   orbitRadius: number;
-}
-
-export interface BeamAttack {
-  owner: number;
-  targetX: number;
-  targetY: number;
-  damage: number;
-  width: number;
-  duration: number;
-  timer: number;
-  color: string;
 }
 
 export interface BoomerangProjectile {

@@ -3,7 +3,10 @@ import type { World } from '../ecs/ecs';
 import { TRANSFORM, WEAPON, WEAPON_OWNER, ENEMY, VELOCITY } from '../components';
 import type { Transform, Weapon, WeaponOwner, Velocity } from '../components';
 import { vec2DistSq } from '../utils/math';
-import { TargetingType } from '../constants';
+import { TargetingType, SPATIAL_CELL_SIZE } from '../constants';
+import { SpatialHash } from '../spatial/spatial-hash';
+
+const enemyHash = new SpatialHash(SPATIAL_CELL_SIZE);
 
 export const TargetingSystem: System = {
   name: 'TargetingSystem',
@@ -16,6 +19,13 @@ export const TargetingSystem: System = {
         weapon.target = null;
       }
       return;
+    }
+
+    // Build spatial hash of enemy positions for fast range queries
+    enemyHash.clear();
+    for (const enemy of enemies) {
+      const et = world.getComponent<Transform>(enemy, TRANSFORM)!;
+      enemyHash.insert(enemy, et.pos, 0);
     }
 
     for (const weaponEntity of world.query(WEAPON, WEAPON_OWNER)) {
@@ -49,9 +59,10 @@ export const TargetingSystem: System = {
           dx = vel.x / len;
           dy = vel.y / len;
         } else {
-          // Fallback: aim at closest enemy
+          // Fallback: aim at closest enemy in range
+          const nearby = enemyHash.query(ownerTransform.pos, weapon.range);
           let closestDistSq = Infinity;
-          for (const enemy of enemies) {
+          for (const enemy of nearby) {
             const et = world.getComponent<Transform>(enemy, TRANSFORM)!;
             const dSq = vec2DistSq(ownerTransform.pos, et.pos);
             if (dSq < closestDistSq && dSq <= rangeSq) {
@@ -78,9 +89,12 @@ export const TargetingSystem: System = {
         continue;
       }
 
+      // Use spatial hash for range-based queries
+      const nearby = enemyHash.query(ownerTransform.pos, weapon.range);
+
       if (weapon.targeting === TargetingType.Closest || weapon.targeting === TargetingType.Aoe) {
         let closestDistSq = Infinity;
-        for (const enemy of enemies) {
+        for (const enemy of nearby) {
           const et = world.getComponent<Transform>(enemy, TRANSFORM)!;
           const dSq = vec2DistSq(ownerTransform.pos, et.pos);
           if (dSq < closestDistSq && dSq <= rangeSq) {
@@ -89,17 +103,20 @@ export const TargetingSystem: System = {
           }
         }
       } else if (weapon.targeting === TargetingType.Random) {
-        const inRange: number[] = [];
-        for (const enemy of enemies) {
+        // Filter nearby to only those actually in range
+        let count = 0;
+        let picked = -1;
+        for (const enemy of nearby) {
           const et = world.getComponent<Transform>(enemy, TRANSFORM)!;
           if (vec2DistSq(ownerTransform.pos, et.pos) <= rangeSq) {
-            inRange.push(enemy);
+            // Reservoir sampling: pick uniformly at random without allocating array
+            count++;
+            if (Math.random() < 1 / count) picked = enemy;
           }
         }
-        if (inRange.length > 0) {
-          const enemy = inRange[Math.floor(Math.random() * inRange.length)];
-          const et = world.getComponent<Transform>(enemy, TRANSFORM)!;
-          weapon.target = { entity: enemy, x: et.pos.x, y: et.pos.y, distSq: vec2DistSq(ownerTransform.pos, et.pos) };
+        if (picked >= 0) {
+          const et = world.getComponent<Transform>(picked, TRANSFORM)!;
+          weapon.target = { entity: picked, x: et.pos.x, y: et.pos.y, distSq: vec2DistSq(ownerTransform.pos, et.pos) };
         }
       }
     }

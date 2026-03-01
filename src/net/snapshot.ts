@@ -2,7 +2,7 @@ import type { World } from '../ecs/ecs';
 import {
   TRANSFORM, VELOCITY, HEALTH, RENDERABLE, PLAYER, ENEMY, WEAPON, WEAPON_OWNER,
   COLLIDER, PROJECTILE, TRAIL, INPUT, PICKUP, SWEEP_ATTACK, NOVA_ATTACK,
-  ORBITAL, BEAM_ATTACK, BOOMERANG, GROUND_ZONE, LIFETIME, RUNE_CHARGE, PARTICLE, DAMAGE_NUMBER, REVIVE_ZONE, SPIRAL_PROJECTILE,
+  ORBITAL, BOOMERANG, GROUND_ZONE, LIFETIME, RUNE_CHARGE, PARTICLE, DAMAGE_NUMBER, REVIVE_ZONE, SPIRAL_PROJECTILE,
   type Transform, type Velocity, type Health, type Renderable, type Player,
 } from '../components';
 
@@ -18,7 +18,7 @@ export interface SnapshotEntity {
 const SNAPSHOT_COMPONENTS = [
   TRANSFORM, VELOCITY, HEALTH, RENDERABLE, PLAYER, ENEMY,
   COLLIDER, PROJECTILE, TRAIL, INPUT, PICKUP,
-  SWEEP_ATTACK, NOVA_ATTACK, ORBITAL, BEAM_ATTACK, BOOMERANG, GROUND_ZONE,
+  SWEEP_ATTACK, NOVA_ATTACK, ORBITAL, BOOMERANG, GROUND_ZONE,
   LIFETIME, RUNE_CHARGE, REVIVE_ZONE, SPIRAL_PROJECTILE,
   WEAPON, WEAPON_OWNER,
 ];
@@ -36,6 +36,9 @@ export class SnapshotManager {
     const allEntities = this.world.query(TRANSFORM);
 
     for (const entity of allEntities) {
+      // Skip particles and damage numbers — clients generate these locally
+      if (this.world.hasComponent(entity, PARTICLE) || this.world.hasComponent(entity, DAMAGE_NUMBER)) continue;
+
       const components: Record<string, any> = {};
 
       for (const compName of SNAPSHOT_COMPONENTS) {
