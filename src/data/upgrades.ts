@@ -5,12 +5,14 @@ import type { Player, Weapon, WeaponOwner, Health } from '../components';
 import { RARITY_WEIGHTS, type Rarity } from '../constants';
 import { WEAPON_DEFS, applyLevelScaling, type WeaponDef } from './weapons';
 import { getOverclocksForWeapon } from './overclocks';
+import { WEAPON_UNLOCK_LEVELS } from '../game/player-manager';
 
 interface UpgradeDef {
   id: string;
   name: string;
   description: string;
   rarity: Rarity;
+  targetTag?: string; // 'projectile', 'magic', 'melee', 'area' — undefined = player/all
   apply: (world: World, playerEntity?: number) => void;
 }
 
@@ -63,20 +65,24 @@ const STAT_UPGRADE_POOL: UpgradeDef[] = [
   { id: 'atk_speed', name: 'Quick Hands', description: 'All weapons: attack speed +12%', rarity: 'common', apply: (w, pe) => modPlayerWeapons(w, pe, wp => { wp.cooldown *= 0.88; }) },
 
   // Rare
-  { id: 'proj_mastery', name: 'Projectile Mastery', description: 'Projectile weapons: +1 piercing', rarity: 'rare', apply: (w, pe) => modTaggedPlayerWeapons(w, pe, 'projectile', wp => { wp.piercing += 1; }) },
-  { id: 'arcane_power', name: 'Arcane Power', description: 'Magic weapons: +20% damage', rarity: 'rare', apply: (w, pe) => modTaggedPlayerWeapons(w, pe, 'magic', wp => { wp.damage *= 1.2; }) },
-  { id: 'melee_fury', name: 'Melee Fury', description: 'Melee weapons: +15% attack speed', rarity: 'rare', apply: (w, pe) => modTaggedPlayerWeapons(w, pe, 'melee', wp => { wp.cooldown *= 0.85; }) },
+  { id: 'proj_mastery', name: 'Projectile Mastery', description: 'Projectile weapons: +1 piercing', rarity: 'rare', targetTag: 'projectile', apply: (w, pe) => modTaggedPlayerWeapons(w, pe, 'projectile', wp => { wp.piercing += 1; }) },
+  { id: 'arcane_power', name: 'Arcane Power', description: 'Magic weapons: +20% damage', rarity: 'rare', targetTag: 'magic', apply: (w, pe) => modTaggedPlayerWeapons(w, pe, 'magic', wp => { wp.damage *= 1.2; }) },
+  { id: 'melee_fury', name: 'Melee Fury', description: 'Melee weapons: +15% attack speed', rarity: 'rare', targetTag: 'melee', apply: (w, pe) => modTaggedPlayerWeapons(w, pe, 'melee', wp => { wp.cooldown *= 0.85; }) },
   { id: 'hp_regen', name: 'Regeneration', description: 'Heal 15 HP now, +10 max HP', rarity: 'rare', apply: (w, pe) => { const h = getPlayerHealth(w, pe); if (h) { h.max += 10; h.current = Math.min(h.max, h.current + 15); } } },
   { id: 'big_dmg', name: 'Power Strike', description: 'Damage +30%', rarity: 'rare', apply: (w, pe) => modSpecificPlayer(w, pe, p => { p.damageMultiplier += 0.3; }) },
   { id: 'range_up', name: 'Long Reach', description: 'All weapons: range +25%', rarity: 'rare', apply: (w, pe) => modPlayerWeapons(w, pe, wp => { wp.range *= 1.25; }) },
+  { id: 'wide_impact', name: 'Wide Impact', description: 'Area weapons: range +20%', rarity: 'rare', targetTag: 'area', apply: (w, pe) => modTaggedPlayerWeapons(w, pe, 'area', wp => { wp.range *= 1.2; }) },
 
   // Epic
-  { id: 'proj_speed', name: 'Velocity', description: 'Projectile speed +50%, damage +20%', rarity: 'epic', apply: (w, pe) => modTaggedPlayerWeapons(w, pe, 'projectile', wp => { wp.projectileSpeed *= 1.5; wp.damage *= 1.2; }) },
+  { id: 'proj_speed', name: 'Velocity', description: 'Projectile speed +50%, damage +20%', rarity: 'epic', targetTag: 'projectile', apply: (w, pe) => modTaggedPlayerWeapons(w, pe, 'projectile', wp => { wp.projectileSpeed *= 1.5; wp.damage *= 1.2; }) },
   { id: 'dash_boost', name: 'Phantom Dash', description: 'Dash cooldown -40%', rarity: 'epic', apply: (w, pe) => modSpecificPlayer(w, pe, p => { p.dashCooldown *= 0.6; }) },
   { id: 'glass_cannon', name: 'Glass Cannon', description: 'Damage +60%, Max HP -25%', rarity: 'epic', apply: (w, pe) => { modSpecificPlayer(w, pe, p => { p.damageMultiplier += 0.6; }); const h = getPlayerHealth(w, pe); if (h) { h.max = Math.floor(h.max * 0.75); h.current = Math.min(h.current, h.max); } } },
+  { id: 'overcharge', name: 'Overcharge', description: 'All weapons: +25% dmg, +15% atk speed', rarity: 'epic', apply: (w, pe) => modPlayerWeapons(w, pe, wp => { wp.damage *= 1.25; wp.cooldown *= 0.85; }) },
+  { id: 'bulwark', name: 'Bulwark', description: '+50 max HP, heal 30 HP now', rarity: 'epic', apply: (w, pe) => { const h = getPlayerHealth(w, pe); if (h) { h.max += 50; h.current = Math.min(h.max, h.current + 30); } } },
 
   // Legendary
   { id: 'berserker', name: 'Berserker', description: 'Damage +100%, speed +30%, -30% max HP', rarity: 'legendary', apply: (w, pe) => { modSpecificPlayer(w, pe, p => { p.damageMultiplier += 1.0; p.speedMultiplier += 0.3; }); const h = getPlayerHealth(w, pe); if (h) { h.max = Math.floor(h.max * 0.7); h.current = Math.min(h.current, h.max); } } },
+  { id: 'juggernaut', name: 'Juggernaut', description: '+50% max HP, +40% dmg, -25% speed', rarity: 'legendary', apply: (w, pe) => { modSpecificPlayer(w, pe, p => { p.damageMultiplier += 0.4; p.speedMultiplier -= 0.25; }); const h = getPlayerHealth(w, pe); if (h) { const bonus = Math.floor(h.max * 0.5); h.max += bonus; h.current += bonus; } } },
 ];
 
 function rollRarity(): Rarity {
@@ -98,6 +104,16 @@ function getPlayerWeapons(world: World, playerEntity?: number): Weapon[] {
     if (!w.locked) results.push(w);
   }
   return results;
+}
+
+function playerHasWeaponWithTag(world: World, playerEntity: number | undefined, tag: string): boolean {
+  for (const e of world.query(WEAPON, WEAPON_OWNER)) {
+    const wo = world.getComponent<WeaponOwner>(e, WEAPON_OWNER);
+    if (playerEntity !== undefined && wo && wo.owner !== playerEntity) continue;
+    const w = world.getComponent<Weapon>(e, WEAPON);
+    if (w && !w.locked && w.tags.includes(tag)) return true;
+  }
+  return false;
 }
 
 function buildWeaponLevelupDesc(weapon: Weapon, def: WeaponDef | undefined, nextLevel: number): string {
@@ -176,9 +192,9 @@ export function generateUpgradeCards(world: World, count = 3, playerEntity?: num
 
     // Stat card
     const rarity = rollRarity();
-    let pool = STAT_UPGRADE_POOL.filter(u => u.rarity === rarity && !usedIds.has(u.id));
+    let pool = STAT_UPGRADE_POOL.filter(u => u.rarity === rarity && !usedIds.has(u.id) && (!u.targetTag || playerHasWeaponWithTag(world, playerEntity, u.targetTag)));
     if (pool.length === 0) {
-      pool = STAT_UPGRADE_POOL.filter(u => !usedIds.has(u.id));
+      pool = STAT_UPGRADE_POOL.filter(u => !usedIds.has(u.id) && (!u.targetTag || playerHasWeaponWithTag(world, playerEntity, u.targetTag)));
     }
     if (pool.length === 0) continue;
 
@@ -190,6 +206,7 @@ export function generateUpgradeCards(world: World, count = 3, playerEntity?: num
       description: def.description,
       rarity: def.rarity,
       type: 'stat',
+      targetTag: def.targetTag,
       apply: () => def.apply(world, playerEntity),
     });
   }
@@ -224,6 +241,7 @@ export function generateWeaponUnlockCards(world: World, playerEntity: number): U
   for (const e of world.query(WEAPON, WEAPON_OWNER)) {
     const wo = world.getComponent<WeaponOwner>(e, WEAPON_OWNER);
     if (!wo || wo.owner !== playerEntity) continue;
+    if (wo.slotIndex >= WEAPON_UNLOCK_LEVELS.length) continue; // Only offer HUD-visible slots
     const w = world.getComponent<Weapon>(e, WEAPON);
     if (w && w.locked) {
       const def = WEAPON_DEFS[w.id];

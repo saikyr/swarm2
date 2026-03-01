@@ -84,6 +84,7 @@ export interface UpgradeCard {
   weaponId?: string;
   weaponName?: string;
   overclockTier?: 'balanced' | 'unstable';
+  targetTag?: string;
   apply: () => void;
 }
 
@@ -222,24 +223,46 @@ function drawWeaponSlots(ctx: CanvasRenderingContext2D, slots: Weapon[], screenW
     ctx.fillStyle = slot.projectileColor;
     ctx.fillRect(startX + 4, y + (mobile ? 4 : 6), 3, slotH - (mobile ? 8 : 12));
 
-    // Weapon name
+    // Name · Lv.N — dynamic font size to fit
+    const nameY = y + (mobile ? 10 : 13);
+    const maxNameW = slotW - 18 - (slot.overclocks.length > 0 ? (mobile ? 28 : 32) : 0);
+    const nameLvText = `${slot.name} · Lv.${slot.level}`;
+    let nameFontSize = fontSize;
+    ctx.font = `bold ${nameFontSize}px monospace`;
+    while (nameFontSize > 7 && ctx.measureText(nameLvText).width > maxNameW) {
+      nameFontSize--;
+      ctx.font = `bold ${nameFontSize}px monospace`;
+    }
     ctx.fillStyle = cdPct > 0 ? '#888' : '#ddd';
-    ctx.font = `bold ${fontSize}px monospace`;
     ctx.textAlign = 'left';
-    ctx.fillText(slot.name, startX + 12, y + (mobile ? 10 : 13));
+    ctx.fillText(slot.name, startX + 12, nameY);
+    // Level suffix in lighter color at same font size
+    const nameW = ctx.measureText(slot.name).width;
+    ctx.fillStyle = '#666';
+    ctx.font = `${nameFontSize}px monospace`;
+    ctx.fillText(` · Lv.${slot.level}`, startX + 12 + nameW, nameY);
 
-    // Level
-    ctx.fillStyle = '#888';
-    ctx.font = `${mobile ? 8 : 9}px monospace`;
-    ctx.textAlign = 'left';
-    ctx.fillText(`Lv.${slot.level}`, startX + 12, y + (mobile ? 20 : 25));
-
-    // Overclocks indicator (hide on mobile to save space)
-    if (!mobile && slot.overclocks.length > 0) {
+    // OC badge on name row (right-aligned)
+    if (slot.overclocks.length > 0) {
       ctx.fillStyle = '#ffd700';
-      ctx.font = '9px monospace';
+      ctx.font = `${mobile ? 8 : 9}px monospace`;
       ctx.textAlign = 'right';
-      ctx.fillText(`OC×${slot.overclocks.length}`, startX + slotW - 6, y + 25);
+      ctx.fillText(`OC×${slot.overclocks.length}`, startX + slotW - 6, nameY);
+    }
+
+    // Tags on second row — dynamic font size to fit
+    if (slot.tags.length > 0) {
+      const tagText = slot.tags.map(t => t.charAt(0).toUpperCase() + t.slice(1)).join(', ');
+      const maxTagW = slotW - 18;
+      let tagFontSize = mobile ? 8 : 9;
+      ctx.font = `${tagFontSize}px monospace`;
+      while (tagFontSize > 6 && ctx.measureText(tagText).width > maxTagW) {
+        tagFontSize--;
+        ctx.font = `${tagFontSize}px monospace`;
+      }
+      ctx.fillStyle = '#555';
+      ctx.textAlign = 'left';
+      ctx.fillText(tagText, startX + 12, y + (mobile ? 20 : 25));
     }
   }
 }
@@ -389,19 +412,27 @@ export function drawUpgradeMenu(
       ctx.font = mobile ? '9px monospace' : '10px monospace';
       ctx.textAlign = 'center';
       ctx.fillText(card.rarity.toUpperCase(), cx + cardW / 2, cy + (mobile ? 18 : 24));
+      // Tag badge
+      if (card.targetTag) {
+        ctx.fillStyle = '#888';
+        ctx.font = mobile ? '8px monospace' : '9px monospace';
+        ctx.fillText(`[${card.targetTag.charAt(0).toUpperCase() + card.targetTag.slice(1)}]`,
+          cx + cardW / 2, cy + (mobile ? 28 : 36));
+      }
     }
 
     // Name
+    const hasTag = card.type !== 'weapon_levelup' && card.type !== 'weapon_unlock' && !card.overclockTier && card.targetTag;
     ctx.fillStyle = '#fff';
     ctx.font = `bold ${mobile ? 11 : 14}px monospace`;
     ctx.textAlign = 'center';
-    ctx.fillText(card.name, cx + cardW / 2, cy + (mobile ? 38 : 50));
+    ctx.fillText(card.name, cx + cardW / 2, cy + (mobile ? 38 : 50) + (hasTag ? (mobile ? 4 : 8) : 0));
 
     // Description (word wrap, supports newlines for multi-section descriptions)
     const descSections = card.description.split('\n');
     const descFontSize = mobile ? 9 : 11;
     const lineHeight = mobile ? 12 : 16;
-    let ly = cy + (mobile ? 52 : 80);
+    let ly = cy + (mobile ? 52 : 80) + (hasTag ? (mobile ? 4 : 8) : 0);
     for (let s = 0; s < descSections.length; s++) {
       if (s > 0) {
         ly += mobile ? 3 : 6;
@@ -509,7 +540,7 @@ export function drawMenu(cc: CanvasContext): void {
 
   ctx.fillStyle = '#666';
   ctx.font = `${mobile ? 10 : 12}px monospace`;
-  if (mobile) {
+  if (isTouchDevice) {
     ctx.fillText('Joystick to move | Auto-aim', width / 2, height / 2 + 130);
     ctx.fillText('Tap DASH to dash', width / 2, height / 2 + 146);
   } else {
@@ -730,7 +761,7 @@ export function drawClassSelect(cc: CanvasContext, selectedIndex: number): void 
     ctx.font = `${mobile ? 9 : 11}px monospace`;
     ctx.fillText(cls.desc, cx + cardW / 2, cardY + (mobile ? 105 : 135));
 
-    if (!mobile) {
+    if (!isTouchDevice) {
       ctx.fillStyle = '#666';
       ctx.font = '12px monospace';
       ctx.fillText(`[${i + 1}]`, cx + cardW / 2, cardY + cardH - 8);
