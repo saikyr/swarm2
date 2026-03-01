@@ -113,15 +113,15 @@ function updateDasher(
   switch (enemy.aiState) {
     case EnemyAIState.Chase: {
       const dir = vec2Normalize(vec2Sub(nearest.pos, transform.pos));
-      // Move at 60% speed while approaching
-      vel.x = dir.x * enemy.speed * 0.6;
-      vel.y = dir.y * enemy.speed * 0.6;
+      // Move at 70% speed while approaching
+      vel.x = dir.x * enemy.speed * 0.7;
+      vel.y = dir.y * enemy.speed * 0.7;
       transform.rotation = Math.atan2(dir.y, dir.x);
 
       // When close enough, start wind-up
-      if (dist < 150) {
+      if (dist < 200) {
         enemy.aiState = EnemyAIState.WindUp;
-        enemy.aiStateTimer = 0.4;
+        enemy.aiStateTimer = 0.3;
         // Lock dash direction
         enemy.attackTimer = Math.atan2(dy, dx);
       }
@@ -134,23 +134,23 @@ function updateDasher(
       // Alpha pulse for visual telegraph
       const renderable = world.getComponent<Renderable>(entity, RENDERABLE);
       if (renderable) {
-        renderable.alpha = 0.5 + 0.5 * Math.sin(enemy.aiStateTimer * 20);
+        renderable.alpha = 0.5 + 0.5 * Math.sin(enemy.aiStateTimer * 25);
       }
       transform.rotation = enemy.attackTimer; // Face dash direction
 
       if (enemy.aiStateTimer <= 0) {
         enemy.aiState = EnemyAIState.Dash;
-        enemy.aiStateTimer = 0.3;
+        enemy.aiStateTimer = 0.4;
         // Restore alpha
         if (renderable) renderable.alpha = 1;
       }
       break;
     }
     case EnemyAIState.Dash: {
-      // Dash at 3x speed in locked direction
+      // Dash at 4.5x speed in locked direction
       const dashAngle = enemy.attackTimer;
-      vel.x = Math.cos(dashAngle) * enemy.speed * 3;
-      vel.y = Math.sin(dashAngle) * enemy.speed * 3;
+      vel.x = Math.cos(dashAngle) * enemy.speed * 4.5;
+      vel.y = Math.sin(dashAngle) * enemy.speed * 4.5;
       transform.rotation = dashAngle;
 
       if (enemy.aiStateTimer <= 0) {

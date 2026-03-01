@@ -17,8 +17,8 @@ export const PLAYER_DASH_COOLDOWN = 1.5;
 export const PLAYER_IFRAMES = 0.2;
 
 // Enemies
-export const ENEMY_SPAWN_DISTANCE_MIN = 400;
-export const ENEMY_SPAWN_DISTANCE_MAX = 600;
+export const ENEMY_SPAWN_DISTANCE_MIN = 600;
+export const ENEMY_SPAWN_DISTANCE_MAX = 900;
 
 // XP
 export const XP_BASE_PER_LEVEL = 10;

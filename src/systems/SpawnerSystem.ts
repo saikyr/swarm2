@@ -47,7 +47,7 @@ interface EnemyDef {
 
 const ENEMY_DEFS: Record<EnemyType, EnemyDef> = {
   [EnemyType.Swarm]:       { type: EnemyType.Swarm,       shape: 'circle',   color: '#ff4444', radius: 8,  speed: 75,  hp: 25,  damage: 8,  xpValue: 1, preferredRange: 0,   projectileSpeed: 0,   projectileDamage: 0,  attackCooldown: 0 },
-  [EnemyType.Dasher]:      { type: EnemyType.Dasher,      shape: 'triangle', color: '#ff8844', radius: 10, speed: 60,  hp: 20,  damage: 15, xpValue: 2, preferredRange: 0,   projectileSpeed: 0,   projectileDamage: 0,  attackCooldown: 3 },
+  [EnemyType.Dasher]:      { type: EnemyType.Dasher,      shape: 'triangle', color: '#ff8844', radius: 10, speed: 80,  hp: 25,  damage: 20, xpValue: 2, preferredRange: 0,   projectileSpeed: 0,   projectileDamage: 0,  attackCooldown: 2.2 },
   [EnemyType.Brute]:       { type: EnemyType.Brute,       shape: 'square',   color: '#aa2222', radius: 18, speed: 35,  hp: 120, damage: 12, xpValue: 3, preferredRange: 0,   projectileSpeed: 0,   projectileDamage: 0,  attackCooldown: 4 },
   [EnemyType.Spitter]:     { type: EnemyType.Spitter,     shape: 'diamond',  color: '#ff44aa', radius: 9,  speed: 50,  hp: 18,  damage: 6,  xpValue: 2, preferredRange: 200, projectileSpeed: 180, projectileDamage: 12, attackCooldown: 2 },
   [EnemyType.Orbiter]:     { type: EnemyType.Orbiter,     shape: 'ring',     color: '#aa44ff', radius: 10, speed: 90,  hp: 30,  damage: 10, xpValue: 2, preferredRange: 120, projectileSpeed: 0,   projectileDamage: 0,  attackCooldown: 0 },
@@ -150,6 +150,8 @@ function pickEnemyType(minutes: number): EnemyType {
 }
 
 function shouldSpawnElite(minutes: number): boolean {
+  // No elites in the first 30 seconds
+  if (minutes < 0.5) return false;
   // Logarithmic curve: quick early introduction, then gradual plateau at ~12%
   const chance = Math.min(0.12, 0.01 + 0.06 * (1 - Math.exp(-minutes * 0.25)));
   return Math.random() < chance;
