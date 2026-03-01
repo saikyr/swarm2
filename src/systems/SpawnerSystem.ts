@@ -90,14 +90,14 @@ export const SpawnerSystem: System = {
     const hpMult = 1 + (playerCount - 1) * 0.5;
     const batchMult = 1 + (playerCount - 1) * 0.25;
 
-    // Spawn rate: gentle first minute, ramps quickly after
-    // 0min: 1.4s, 1min: 0.95s, 2min: 0.65s, 3min: 0.44s, 5min: 0.28s
-    const baseRate = Math.max(0.25, 1.4 * Math.pow(0.82, minutes));
+    // Spawn rate: brisk start, ramps aggressively in first 3 minutes
+    // 0min: 1.0s, 0.5min: 0.78s, 1min: 0.6s, 2min: 0.4s, 3min: 0.3s, 5min: 0.25s
+    const baseRate = Math.max(0.2, 1.0 * Math.pow(0.75, minutes));
     runRef.spawnTimer = baseRate / spawnRateMult;
 
-    // Batch size: starts at 1, ramps faster
-    // 0min: 1, 1.5min: 2, 3min: 2, 5min: 3, 8min: 5, 12min: 9
-    const batchSize = Math.floor(Math.max(1, 1.2 * Math.pow(1.16, minutes)) * batchMult);
+    // Batch size: starts at 2, ramps faster in early game
+    // 0min: 2, 1min: 2, 2min: 3, 3min: 4, 5min: 5, 8min: 8, 12min: 14
+    const batchSize = Math.floor(Math.max(2, 1.5 * Math.pow(1.2, minutes)) * batchMult);
     const currentEnemyCount = world.query(ENEMY).length;
     // Enemy cap: lower early, climbs faster
     // 0min: 100, 1min: 180, 3min: 294, 5min: 397, 10min: 604
@@ -126,8 +126,8 @@ export const SpawnerSystem: System = {
 
 function pickEnemyType(minutes: number): EnemyType {
   const r = Math.random();
-  if (minutes < 1) return EnemyType.Swarm;
-  if (minutes < 2) return r < 0.7 ? EnemyType.Swarm : EnemyType.Dasher;
+  if (minutes < 0.5) return EnemyType.Swarm;
+  if (minutes < 1.5) return r < 0.7 ? EnemyType.Swarm : EnemyType.Dasher;
   if (minutes < 4) {
     if (r < 0.45) return EnemyType.Swarm;
     if (r < 0.70) return EnemyType.Dasher;

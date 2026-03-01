@@ -412,27 +412,19 @@ export function drawUpgradeMenu(
       ctx.font = mobile ? '9px monospace' : '10px monospace';
       ctx.textAlign = 'center';
       ctx.fillText(card.rarity.toUpperCase(), cx + cardW / 2, cy + (mobile ? 18 : 24));
-      // Tag badge
-      if (card.targetTag) {
-        ctx.fillStyle = '#888';
-        ctx.font = mobile ? '8px monospace' : '9px monospace';
-        ctx.fillText(`[${card.targetTag.charAt(0).toUpperCase() + card.targetTag.slice(1)}]`,
-          cx + cardW / 2, cy + (mobile ? 28 : 36));
-      }
     }
 
     // Name
-    const hasTag = card.type !== 'weapon_levelup' && card.type !== 'weapon_unlock' && !card.overclockTier && card.targetTag;
     ctx.fillStyle = '#fff';
     ctx.font = `bold ${mobile ? 11 : 14}px monospace`;
     ctx.textAlign = 'center';
-    ctx.fillText(card.name, cx + cardW / 2, cy + (mobile ? 38 : 50) + (hasTag ? (mobile ? 4 : 8) : 0));
+    ctx.fillText(card.name, cx + cardW / 2, cy + (mobile ? 38 : 50));
 
     // Description (word wrap, supports newlines for multi-section descriptions)
     const descSections = card.description.split('\n');
     const descFontSize = mobile ? 9 : 11;
     const lineHeight = mobile ? 12 : 16;
-    let ly = cy + (mobile ? 52 : 80) + (hasTag ? (mobile ? 4 : 8) : 0);
+    let ly = cy + (mobile ? 52 : 80);
     for (let s = 0; s < descSections.length; s++) {
       if (s > 0) {
         ly += mobile ? 3 : 6;
@@ -458,8 +450,17 @@ export function drawUpgradeMenu(
       ly += lineHeight;
     }
 
+    // Tag badge (bottom of card)
+    if (card.targetTag) {
+      ctx.fillStyle = '#666';
+      ctx.font = mobile ? '8px monospace' : '9px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(`[${card.targetTag.charAt(0).toUpperCase() + card.targetTag.slice(1)}]`,
+        cx + cardW / 2, cy + cardH - (mobile ? 8 : 30));
+    }
+
     // Keybind
-    if (!mobile) {
+    if (!isTouchDevice) {
       ctx.fillStyle = '#666';
       ctx.font = '12px monospace';
       ctx.fillText(`[${i + 1}]`, cx + cardW / 2, cy + cardH - 16);
