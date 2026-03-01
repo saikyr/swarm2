@@ -13,7 +13,7 @@ import {
 } from '../components';
 import { generateUpgradeCards, generateOverclockCards, generateWeaponUnlockCards } from '../data/upgrades';
 import type { UpgradeCard } from '../rendering/ui';
-import { drawHUD, drawUpgradeMenu, drawGameOver, drawMenu, drawClassSelect, drawLobby, drawWaitingRoom, type MinimapData } from '../rendering/ui';
+import { drawHUD, drawUpgradeMenu, drawGameOver, drawMenu, drawClassSelect, drawLobby, drawWaitingRoom, getUpgradeCardLayout, getClassCardLayout, type MinimapData } from '../rendering/ui';
 import { render } from '../systems/RenderSystem';
 import { spawnPlayers, WEAPON_UNLOCK_LEVELS, type PlayerConfig, type PlayerData } from './player-manager';
 
@@ -213,16 +213,12 @@ export class Game {
         changeState(this.stateMgr, GameState.Lobby);
       }
     } else if (state === GameState.ClassSelect) {
-      // Class cards are drawn at known positions — use card hit testing
-      // Card layout: 200px wide, 40px gap, centered; cardY = height/2 - 60, cardH = 180
-      const cardW = 200, gap = 40, cardH = 180;
-      const totalW = 2 * cardW + gap;
-      const startX = (width - totalW) / 2;
-      const cardY = height / 2 - 60;
+      const layout = getClassCardLayout(width, height);
+      const { cardW, cardH, gap, startX, cardY } = layout;
       if (this.mouseY >= cardY && this.mouseY <= cardY + cardH) {
         if (this.mouseX >= startX && this.mouseX <= startX + cardW) {
           this.handleClassSelected(ClassType.Warrior);
-        } else if (this.mouseX >= startX + cardW + gap && this.mouseX <= startX + totalW) {
+        } else if (this.mouseX >= startX + cardW + gap && this.mouseX <= startX + 2 * cardW + gap) {
           this.handleClassSelected(ClassType.Caster);
         }
       }
@@ -240,19 +236,16 @@ export class Game {
         changeState(this.stateMgr, GameState.Menu);
       }
     } else if (state === GameState.Upgrading) {
-      // Tap-to-select upgrade cards (same layout as drawUpgradeMenu)
       if (this.upgradeInputDelay > 0) return;
-      const cardW = 180, cardH = 200, gap = 20;
-      const totalW = this.upgradeCards.length * cardW + (this.upgradeCards.length - 1) * gap;
-      const startX = (width - totalW) / 2;
-      const cardY = height / 2 - 80;
-      if (this.mouseY >= cardY && this.mouseY <= cardY + cardH) {
-        for (let i = 0; i < this.upgradeCards.length; i++) {
-          const cx = startX + i * (cardW + gap);
-          if (this.mouseX >= cx && this.mouseX <= cx + cardW) {
-            this.pickUpgrade(i);
-            break;
-          }
+      const layout = getUpgradeCardLayout(width, height, this.upgradeCards.length);
+      const { cardW, cardH, gap, startX, startY, vertical } = layout;
+      for (let i = 0; i < this.upgradeCards.length; i++) {
+        const cx = vertical ? startX : startX + i * (cardW + gap);
+        const cy = vertical ? startY + i * (cardH + gap) : startY;
+        if (this.mouseX >= cx && this.mouseX <= cx + cardW &&
+            this.mouseY >= cy && this.mouseY <= cy + cardH) {
+          this.pickUpgrade(i);
+          break;
         }
       }
     } else if (state === GameState.Paused) {

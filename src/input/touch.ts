@@ -24,15 +24,11 @@ const MAX_RADIUS = 60;
 
 // --- Button state (right side, bottom) ---
 let dashTouchId: number | null = null;
-let abilityTouchId: number | null = null;
 let dashDown = false;
-let abilityDown = false;
 
 // Button positions (set during draw, used for hit-testing)
 let dashBtnX = 0;
 let dashBtnY = 0;
-let abilityBtnX = 0;
-let abilityBtnY = 0;
 const BTN_RADIUS = 32;
 
 // --- Pause button (top-right during gameplay) ---
@@ -61,7 +57,7 @@ export function getTouchInput(): { moveX: number; moveY: number; dash: boolean; 
     }
   }
 
-  return { moveX, moveY, dash: dashDown, ability: abilityDown };
+  return { moveX, moveY, dash: dashDown, ability: false };
 }
 
 export function consumeTap(): { x: number; y: number } | null {
@@ -122,11 +118,6 @@ export function setupTouchListeners(canvas: HTMLCanvasElement): void {
         dashDown = true;
         continue;
       }
-      if (hitTestButton(x, y, abilityBtnX, abilityBtnY)) {
-        abilityTouchId = t.identifier;
-        abilityDown = true;
-        continue;
-      }
 
       // Left half → joystick (use rect.width for CSS pixels, not canvas.width)
       if (x < rect.width * 0.5 && joystickTouchId === null) {
@@ -174,10 +165,6 @@ export function setupTouchListeners(canvas: HTMLCanvasElement): void {
         dashTouchId = null;
         dashDown = false;
       }
-      if (t.identifier === abilityTouchId) {
-        abilityTouchId = null;
-        abilityDown = false;
-      }
     }
   };
 
@@ -219,13 +206,10 @@ export function drawTouchControls(
     ctx.fill();
   }
 
-  // --- Action buttons (bottom-right) ---
-  dashBtnX = width - 100;
-  dashBtnY = height - 120;
-  abilityBtnX = width - 170;
-  abilityBtnY = height - 70;
+  // --- Dash button (above minimap, bottom-right area) ---
+  dashBtnX = width - 80;
+  dashBtnY = height - 130;
 
-  // Dash button
   ctx.fillStyle = dashDown ? '#00ffff' : '#225';
   ctx.strokeStyle = '#00ffff';
   ctx.lineWidth = 2;
@@ -240,21 +224,6 @@ export function drawTouchControls(
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText('DASH', dashBtnX, dashBtnY);
-
-  // Ability button
-  ctx.globalAlpha = 0.35;
-  ctx.fillStyle = abilityDown ? '#aa44ff' : '#214';
-  ctx.strokeStyle = '#aa44ff';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.arc(abilityBtnX, abilityBtnY, BTN_RADIUS, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.stroke();
-
-  ctx.globalAlpha = 0.7;
-  ctx.fillStyle = '#fff';
-  ctx.font = 'bold 11px monospace';
-  ctx.fillText('ABILITY', abilityBtnX, abilityBtnY);
 
   // --- Pause button (top-right) ---
   pauseBtnX = width - 36;

@@ -8,6 +8,50 @@ import type { World } from '../ecs/ecs';
 import type { Lobby } from '../game/lobby';
 import { isTouchDevice } from '../input/touch';
 
+/** Portrait phone: narrow width + touch */
+function isNarrow(width: number): boolean {
+  return isTouchDevice && width < 600;
+}
+
+/** Any touch device (portrait or landscape) */
+function isTouch(): boolean {
+  return isTouchDevice;
+}
+
+export function getUpgradeCardLayout(width: number, height: number, cardCount: number) {
+  const narrow = isNarrow(width);
+  const short = height < 500;
+  if (narrow) {
+    const cardW = Math.min(width - 40, 160);
+    const cardH = 120;
+    const gap = 10;
+    const startX = (width - cardW) / 2;
+    const startY = height / 2 - (cardCount * (cardH + gap)) / 2;
+    return { cardW, cardH, gap, startX, startY, vertical: true };
+  }
+  const cardW = 180, cardH = short ? 160 : 200, gap = short ? 12 : 20;
+  const totalW = cardCount * cardW + (cardCount - 1) * gap;
+  const startX = (width - totalW) / 2;
+  const startY = height / 2 - (short ? 50 : 80);
+  return { cardW, cardH, gap, startX, startY, vertical: false };
+}
+
+export function getClassCardLayout(width: number, height: number) {
+  const narrow = isNarrow(width);
+  const short = height < 500;
+  const cardW = narrow ? Math.min(Math.floor(width / 2) - 20, 160) : 200;
+  const gap = narrow ? 10 : 40;
+  const cardH = narrow ? 150 : (short ? 140 : 180);
+  const totalW = 2 * cardW + gap;
+  const startX = (width - totalW) / 2;
+  const cardY = height / 2 - (narrow ? 40 : (short ? 40 : 60));
+  return { cardW, cardH, gap, totalW, startX, cardY, narrow };
+}
+
+function getMenuButtonWidth(width: number): number {
+  return isNarrow(width) ? Math.min(width - 40, 220) : 220;
+}
+
 function drawMenuButton(
   ctx: CanvasRenderingContext2D,
   cx: number, cy: number, w: number, h: number,
@@ -56,10 +100,11 @@ export function drawHUD(
   weaponSlots?: Weapon[]
 ): void {
   const { ctx, width } = cc;
+  const mobile = isNarrow(width);
   ctx.save();
 
   // HP bar
-  const barW = 200;
+  const barW = mobile ? 140 : 200;
   const barH = 12;
   const barX = 20;
   const barY = 20;
@@ -98,24 +143,27 @@ export function drawHUD(
   ctx.textAlign = 'center';
   ctx.fillText(`${mins}:${secs.toString().padStart(2, '0')}`, width / 2, 24);
 
-  // Kills
+  // Kills (offset from pause button on touch devices)
+  const touch = isTouch();
+  const statsX = touch ? width - 70 : width - 20;
   ctx.textAlign = 'right';
   ctx.fillStyle = '#888';
-  ctx.font = '12px monospace';
-  ctx.fillText(`Kills: ${player.kills}`, width - 20, 24);
-  ctx.fillText(`Wave: ${run.wave}`, width - 20, 42);
+  ctx.font = `${touch ? 10 : 12}px monospace`;
+  ctx.fillText(`Kills: ${player.kills}`, statsX, 24);
+  ctx.fillText(`Wave: ${run.wave}`, statsX, 42);
 
   // Dash cooldown indicator
   const dashReady = player.dashCooldownTimer <= 0;
   ctx.textAlign = 'left';
   ctx.fillStyle = dashReady ? '#00ffff' : '#444';
   ctx.font = '11px monospace';
-  const dashText = dashReady ? '[SPACE] Dash' : `[SPACE] Dash ${(player.dashCooldownTimer).toFixed(1)}s`;
+  const dashLabel = touch ? 'Dash' : '[SPACE] Dash';
+  const dashText = dashReady ? dashLabel : `${dashLabel} ${(player.dashCooldownTimer).toFixed(1)}s`;
   ctx.fillText(dashText, barX, xpY + 40);
 
   // Weapon slots HUD (bottom-left)
   if (weaponSlots && weaponSlots.length > 0) {
-    drawWeaponSlots(ctx, weaponSlots, cc.height);
+    drawWeaponSlots(ctx, weaponSlots, width, cc.height);
   }
 
   // Minimap
@@ -126,10 +174,12 @@ export function drawHUD(
   ctx.restore();
 }
 
-function drawWeaponSlots(ctx: CanvasRenderingContext2D, slots: Weapon[], screenH: number): void {
-  const slotW = 150;
-  const slotH = 32;
-  const gap = 4;
+function drawWeaponSlots(ctx: CanvasRenderingContext2D, slots: Weapon[], screenW: number, screenH: number): void {
+  const mobile = isTouch();
+  const slotW = mobile ? 100 : 150;
+  const slotH = mobile ? 24 : 32;
+  const gap = mobile ? 3 : 4;
+  const fontSize = mobile ? 9 : 11;
   const startX = 16;
   const startY = screenH - (slots.length * (slotH + gap)) - 10;
 
@@ -148,7 +198,7 @@ function drawWeaponSlots(ctx: CanvasRenderingContext2D, slots: Weapon[], screenH
 
     if (slot.locked) {
       ctx.fillStyle = '#444';
-      ctx.font = '11px monospace';
+      ctx.font = `${fontSize}px monospace`;
       ctx.textAlign = 'center';
       ctx.fillText('? Locked', startX + slotW / 2, y + slotH / 2 + 4);
       continue;
@@ -168,22 +218,22 @@ function drawWeaponSlots(ctx: CanvasRenderingContext2D, slots: Weapon[], screenH
 
     // Weapon color indicator bar
     ctx.fillStyle = slot.projectileColor;
-    ctx.fillRect(startX + 4, y + 6, 3, slotH - 12);
+    ctx.fillRect(startX + 4, y + (mobile ? 4 : 6), 3, slotH - (mobile ? 8 : 12));
 
     // Weapon name
     ctx.fillStyle = cdPct > 0 ? '#888' : '#ddd';
-    ctx.font = 'bold 11px monospace';
+    ctx.font = `bold ${fontSize}px monospace`;
     ctx.textAlign = 'left';
-    ctx.fillText(slot.name, startX + 12, y + 13);
+    ctx.fillText(slot.name, startX + 12, y + (mobile ? 10 : 13));
 
     // Level
     ctx.fillStyle = '#888';
-    ctx.font = '9px monospace';
+    ctx.font = `${mobile ? 8 : 9}px monospace`;
     ctx.textAlign = 'left';
-    ctx.fillText(`Lv.${slot.level}`, startX + 12, y + 25);
+    ctx.fillText(`Lv.${slot.level}`, startX + 12, y + (mobile ? 20 : 25));
 
-    // Overclocks indicator
-    if (slot.overclocks.length > 0) {
+    // Overclocks indicator (hide on mobile to save space)
+    if (!mobile && slot.overclocks.length > 0) {
       ctx.fillStyle = '#ffd700';
       ctx.font = '9px monospace';
       ctx.textAlign = 'right';
@@ -197,9 +247,10 @@ function drawMinimap(
   screenW: number, screenH: number,
   data: MinimapData,
 ): void {
-  const mapSize = 100;
-  const mapX = screenW - mapSize - 16;
-  const mapY = screenH - mapSize - 16;
+  const touch = isTouch();
+  const mapSize = touch ? 70 : 100;
+  const mapX = screenW - mapSize - 12;
+  const mapY = screenH - mapSize - 12;
   const scaleX = mapSize / WORLD_WIDTH;
   const scaleY = mapSize / WORLD_HEIGHT;
 
@@ -256,30 +307,31 @@ export function drawUpgradeMenu(
   ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
   ctx.fillRect(0, 0, width, height);
 
+  // Layout
+  const layout = getUpgradeCardLayout(width, height, cards.length);
+  const { cardW, cardH, gap, startX, startY, vertical } = layout;
+  const mobile = isNarrow(width);
+  const compact = height < 500;
+  const small = mobile || compact;
+
   // Title — context-dependent for weapon unlock vs normal upgrade
   const isWeaponUnlock = cards.length > 0 && cards[0].type === 'weapon_unlock';
   ctx.fillStyle = isWeaponUnlock ? '#44aaff' : '#fff';
-  ctx.font = 'bold 28px monospace';
+  ctx.font = `bold ${small ? 20 : 28}px monospace`;
   ctx.textAlign = 'center';
-  ctx.fillText(isWeaponUnlock ? 'NEW WEAPON!' : 'LEVEL UP!', width / 2, height / 2 - 150);
-  ctx.font = '14px monospace';
+  const titleY = vertical ? startY - 50 : height / 2 - 150;
+  ctx.fillText(isWeaponUnlock ? 'NEW WEAPON!' : 'LEVEL UP!', width / 2, compact ? titleY + 20 : titleY);
+  ctx.font = `${small ? 11 : 14}px monospace`;
   ctx.fillStyle = '#888';
   const hint = isWeaponUnlock
     ? (isTouchDevice ? 'Tap a weapon to unlock' : 'Choose a weapon to unlock (1/2/3 or arrows + enter)')
     : (isTouchDevice ? 'Tap an upgrade to select' : 'Choose an upgrade (1/2/3 or arrows + enter)');
-  ctx.fillText(hint, width / 2, height / 2 - 124);
-
-  // Cards
-  const cardW = 180;
-  const cardH = 200;
-  const gap = 20;
-  const totalW = cards.length * cardW + (cards.length - 1) * gap;
-  const startX = (width - totalW) / 2;
-  const cardY = height / 2 - 80;
+  ctx.fillText(hint, width / 2, (compact ? titleY + 40 : titleY) + 26);
 
   for (let i = 0; i < cards.length; i++) {
     const card = cards[i];
-    const cx = startX + i * (cardW + gap);
+    const cx = vertical ? startX : startX + i * (cardW + gap);
+    const cy = vertical ? startY + i * (cardH + gap) : startY;
     const isSelected = i === selectedIndex;
 
     // Determine border color and style based on card type
@@ -302,57 +354,60 @@ export function drawUpgradeMenu(
     ctx.strokeStyle = borderColor;
     ctx.lineWidth = borderWidth;
     ctx.beginPath();
-    ctx.roundRect(cx, cardY, cardW, cardH, 8);
+    ctx.roundRect(cx, cy, cardW, cardH, 8);
     ctx.fill();
     ctx.stroke();
+
+    const typeFont = mobile ? '10px monospace' : '12px monospace';
 
     // Type indicator icon
     if (card.type === 'weapon_unlock') {
       ctx.fillStyle = '#44aaff';
-      ctx.font = '12px monospace';
+      ctx.font = typeFont;
       ctx.textAlign = 'center';
-      ctx.fillText('UNLOCK', cx + cardW / 2, cardY + 18);
+      ctx.fillText('UNLOCK', cx + cardW / 2, cy + 18);
     } else if (card.type === 'weapon_levelup') {
       ctx.fillStyle = '#44aaff';
-      ctx.font = '12px monospace';
+      ctx.font = typeFont;
       ctx.textAlign = 'center';
-      ctx.fillText('WEAPON', cx + cardW / 2, cardY + 18);
+      ctx.fillText('WEAPON', cx + cardW / 2, cy + 18);
     } else if (card.overclockTier === 'balanced') {
       ctx.fillStyle = '#ffd700';
-      ctx.font = '12px monospace';
+      ctx.font = typeFont;
       ctx.textAlign = 'center';
-      ctx.fillText('OVERCLOCK', cx + cardW / 2, cardY + 18);
+      ctx.fillText('OVERCLOCK', cx + cardW / 2, cy + 18);
     } else if (card.overclockTier === 'unstable') {
       ctx.fillStyle = '#ff4400';
-      ctx.font = '12px monospace';
+      ctx.font = typeFont;
       ctx.textAlign = 'center';
-      ctx.fillText('UNSTABLE', cx + cardW / 2, cardY + 18);
+      ctx.fillText('UNSTABLE', cx + cardW / 2, cy + 18);
     } else {
       // Rarity label
       ctx.fillStyle = RARITY_COLORS[card.rarity];
-      ctx.font = '10px monospace';
+      ctx.font = mobile ? '9px monospace' : '10px monospace';
       ctx.textAlign = 'center';
-      ctx.fillText(card.rarity.toUpperCase(), cx + cardW / 2, cardY + 24);
+      ctx.fillText(card.rarity.toUpperCase(), cx + cardW / 2, cy + (mobile ? 18 : 24));
     }
 
     // Name
     ctx.fillStyle = '#fff';
-    ctx.font = 'bold 14px monospace';
+    ctx.font = `bold ${mobile ? 11 : 14}px monospace`;
     ctx.textAlign = 'center';
-    ctx.fillText(card.name, cx + cardW / 2, cardY + 50);
+    ctx.fillText(card.name, cx + cardW / 2, cy + (mobile ? 38 : 50));
 
     // Description (word wrap, supports newlines for multi-section descriptions)
     const descSections = card.description.split('\n');
-    let ly = cardY + 80;
+    const descFontSize = mobile ? 9 : 11;
+    const lineHeight = mobile ? 12 : 16;
+    let ly = cy + (mobile ? 52 : 80);
     for (let s = 0; s < descSections.length; s++) {
-      // Style: first section is flavor text, subsequent sections are stats
       if (s > 0) {
-        ly += 6; // Extra spacing before stats
+        ly += mobile ? 3 : 6;
         ctx.fillStyle = card.type === 'weapon_unlock' ? '#66bbff' : '#ccc';
-        ctx.font = 'bold 10px monospace';
+        ctx.font = `bold ${mobile ? 9 : 10}px monospace`;
       } else {
         ctx.fillStyle = '#aaa';
-        ctx.font = '11px monospace';
+        ctx.font = `${descFontSize}px monospace`;
       }
       const words = descSections[s].split(' ');
       let line = '';
@@ -361,19 +416,21 @@ export function drawUpgradeMenu(
         if (ctx.measureText(test).width > cardW - 20) {
           ctx.fillText(line, cx + cardW / 2, ly);
           line = word + ' ';
-          ly += 16;
+          ly += lineHeight;
         } else {
           line = test;
         }
       }
       ctx.fillText(line, cx + cardW / 2, ly);
-      ly += 16;
+      ly += lineHeight;
     }
 
     // Keybind
-    ctx.fillStyle = '#666';
-    ctx.font = '12px monospace';
-    ctx.fillText(`[${i + 1}]`, cx + cardW / 2, cardY + cardH - 16);
+    if (!mobile) {
+      ctx.fillStyle = '#666';
+      ctx.font = '12px monospace';
+      ctx.fillText(`[${i + 1}]`, cx + cardW / 2, cy + cardH - 16);
+    }
   }
 
   ctx.restore();
@@ -381,6 +438,8 @@ export function drawUpgradeMenu(
 
 export function drawGameOver(cc: CanvasContext, run: RunContext, kills: number): void {
   const { ctx, width, height } = cc;
+  const mobile = isNarrow(width);
+  const btnW = getMenuButtonWidth(width);
   ctx.save();
 
   ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
@@ -388,21 +447,21 @@ export function drawGameOver(cc: CanvasContext, run: RunContext, kills: number):
 
   ctx.textAlign = 'center';
   ctx.fillStyle = '#ff4444';
-  ctx.font = 'bold 36px monospace';
+  ctx.font = `bold ${mobile ? 28 : 36}px monospace`;
   ctx.fillText('GAME OVER', width / 2, height / 2 - 60);
 
   const mins = Math.floor(run.timer / 60);
   const secs = Math.floor(run.timer % 60);
 
   ctx.fillStyle = '#ccc';
-  ctx.font = '16px monospace';
+  ctx.font = `${mobile ? 13 : 16}px monospace`;
   ctx.fillText(`Survived: ${mins}:${secs.toString().padStart(2, '0')}`, width / 2, height / 2 - 10);
   ctx.fillText(`Kills: ${kills}`, width / 2, height / 2 + 20);
   ctx.fillText(`Wave: ${run.wave}`, width / 2, height / 2 + 50);
   ctx.fillText(`Currency earned: ${run.currencyEarned}`, width / 2, height / 2 + 80);
 
   if (isTouchDevice) {
-    drawMenuButton(ctx, width / 2, height / 2 + 130, 220, 40, 'CONTINUE', '#888', '#1a1a1a');
+    drawMenuButton(ctx, width / 2, height / 2 + 130, btnW, 40, 'CONTINUE', '#888', '#1a1a1a');
   } else {
     ctx.fillStyle = '#888';
     ctx.font = '14px monospace';
@@ -414,6 +473,8 @@ export function drawGameOver(cc: CanvasContext, run: RunContext, kills: number):
 
 export function drawMenu(cc: CanvasContext): void {
   const { ctx, width, height } = cc;
+  const mobile = isNarrow(width);
+  const btnW = getMenuButtonWidth(width);
   ctx.save();
 
   ctx.fillStyle = '#0a0a12';
@@ -421,20 +482,19 @@ export function drawMenu(cc: CanvasContext): void {
 
   ctx.textAlign = 'center';
   ctx.fillStyle = '#00ffff';
-  ctx.font = 'bold 48px monospace';
+  ctx.font = `bold ${mobile ? 36 : 48}px monospace`;
   ctx.shadowColor = '#00ffff';
   ctx.shadowBlur = 20;
   ctx.fillText('SWARM', width / 2, height / 2 - 60);
   ctx.shadowBlur = 0;
 
   ctx.fillStyle = '#888';
-  ctx.font = '14px monospace';
+  ctx.font = `${mobile ? 11 : 14}px monospace`;
   ctx.fillText('A Vampire Survivors-Style Game', width / 2, height / 2 - 20);
 
   if (isTouchDevice) {
-    // Draw tappable buttons on mobile
-    drawMenuButton(ctx, width / 2, height / 2 + 30, 220, 40, 'SOLO PLAY', '#fff', '#222');
-    drawMenuButton(ctx, width / 2, height / 2 + 85, 220, 40, 'MULTIPLAYER', '#00cc88', '#0a1a14');
+    drawMenuButton(ctx, width / 2, height / 2 + 30, btnW, 40, 'SOLO PLAY', '#fff', '#222');
+    drawMenuButton(ctx, width / 2, height / 2 + 85, btnW, 40, 'MULTIPLAYER', '#00cc88', '#0a1a14');
   } else {
     ctx.fillStyle = '#fff';
     ctx.font = '16px monospace';
@@ -446,19 +506,24 @@ export function drawMenu(cc: CanvasContext): void {
   }
 
   ctx.fillStyle = '#666';
-  ctx.font = '12px monospace';
-  ctx.fillText(
-    isTouchDevice
-      ? 'Joystick to move | Auto-aim weapons | Tap DASH to dash'
-      : 'WASD to move | Auto-aim weapons | Space to dash',
-    width / 2, height / 2 + 110,
-  );
+  ctx.font = `${mobile ? 10 : 12}px monospace`;
+  if (mobile) {
+    ctx.fillText('Joystick to move | Auto-aim', width / 2, height / 2 + 130);
+    ctx.fillText('Tap DASH to dash', width / 2, height / 2 + 146);
+  } else {
+    ctx.fillText(
+      'WASD to move | Auto-aim weapons | Space to dash',
+      width / 2, height / 2 + 110,
+    );
+  }
 
   ctx.restore();
 }
 
 export function drawLobby(cc: CanvasContext, lobby: Lobby, mode: 'menu' | 'join', input: string, error: string): void {
   const { ctx, width, height } = cc;
+  const mobile = isNarrow(width);
+  const btnW = getMenuButtonWidth(width);
   ctx.save();
 
   ctx.fillStyle = '#0a0a12';
@@ -466,7 +531,7 @@ export function drawLobby(cc: CanvasContext, lobby: Lobby, mode: 'menu' | 'join'
 
   ctx.textAlign = 'center';
   ctx.fillStyle = '#00ffff';
-  ctx.font = 'bold 32px monospace';
+  ctx.font = `bold ${mobile ? 24 : 32}px monospace`;
   ctx.fillText('MULTIPLAYER', width / 2, height / 2 - 120);
 
   if (lobby.roomCode) {
@@ -480,8 +545,8 @@ export function drawLobby(cc: CanvasContext, lobby: Lobby, mode: 'menu' | 'join'
   } else if (mode === 'menu') {
     // Host/Join selection
     if (isTouchDevice) {
-      drawMenuButton(ctx, width / 2, height / 2 - 20, 220, 40, 'HOST GAME', '#fff', '#222');
-      drawMenuButton(ctx, width / 2, height / 2 + 30, 220, 40, 'JOIN GAME', '#00cc88', '#0a1a14');
+      drawMenuButton(ctx, width / 2, height / 2 - 20, btnW, 40, 'HOST GAME', '#fff', '#222');
+      drawMenuButton(ctx, width / 2, height / 2 + 30, btnW, 40, 'JOIN GAME', '#00cc88', '#0a1a14');
     } else {
       ctx.fillStyle = '#fff';
       ctx.font = '18px monospace';
@@ -531,6 +596,8 @@ export function drawLobby(cc: CanvasContext, lobby: Lobby, mode: 'menu' | 'join'
 
 export function drawWaitingRoom(cc: CanvasContext, lobby: Lobby, isHost: boolean): void {
   const { ctx, width, height } = cc;
+  const mobile = isNarrow(width);
+  const btnW = getMenuButtonWidth(width);
   ctx.save();
 
   ctx.fillStyle = '#0a0a12';
@@ -538,7 +605,7 @@ export function drawWaitingRoom(cc: CanvasContext, lobby: Lobby, isHost: boolean
 
   ctx.textAlign = 'center';
   ctx.fillStyle = '#00ffff';
-  ctx.font = 'bold 28px monospace';
+  ctx.font = `bold ${mobile ? 22 : 28}px monospace`;
   ctx.fillText('WAITING FOR PLAYERS', width / 2, height / 2 - 120);
 
   ctx.fillStyle = '#fff';
@@ -569,7 +636,7 @@ export function drawWaitingRoom(cc: CanvasContext, lobby: Lobby, isHost: boolean
     const allReady = lobby.players.length >= 1 && lobby.players.every(p => lobby.classSelections.has(p.playerId));
     if (isTouchDevice) {
       if (allReady) {
-        drawMenuButton(ctx, width / 2, height / 2 + 130, 220, 40, 'START GAME', '#00ff88', '#0a1a0a');
+        drawMenuButton(ctx, width / 2, height / 2 + 130, btnW, 40, 'START GAME', '#00ff88', '#0a1a0a');
       } else {
         ctx.fillStyle = '#555';
         ctx.font = '14px monospace';
@@ -605,22 +672,19 @@ export function drawClassSelect(cc: CanvasContext, selectedIndex: number): void 
   ctx.fillStyle = '#0a0a12';
   ctx.fillRect(0, 0, width, height);
 
+  const mobile = isNarrow(width);
   ctx.textAlign = 'center';
   ctx.fillStyle = '#fff';
-  ctx.font = 'bold 28px monospace';
-  ctx.fillText('CHOOSE YOUR CLASS', width / 2, height / 2 - 120);
+  ctx.font = `bold ${mobile ? 20 : 28}px monospace`;
+  ctx.fillText('CHOOSE YOUR CLASS', width / 2, height / 2 - (mobile ? 90 : 120));
 
   const classes = [
     { name: 'WARRIOR', color: '#00ffff', shape: 'diamond', desc: 'Melee combat specialist' },
     { name: 'CASTER', color: '#aa44ff', shape: 'circle', desc: 'Ranged magic wielder' },
   ];
 
-  const cardW = 200;
-  const cardH = 180;
-  const gap = 40;
-  const totalW = classes.length * cardW + (classes.length - 1) * gap;
-  const startX = (width - totalW) / 2;
-  const cardY = height / 2 - 60;
+  const layout = getClassCardLayout(width, height);
+  const { cardW, cardH, gap, startX, cardY } = layout;
 
   for (let i = 0; i < classes.length; i++) {
     const cls = classes[i];
@@ -635,40 +699,45 @@ export function drawClassSelect(cc: CanvasContext, selectedIndex: number): void 
     ctx.fill();
     ctx.stroke();
 
+    const iconY = cardY + (mobile ? 20 : 30);
+    const iconCenterY = cardY + (mobile ? 40 : 55);
     ctx.fillStyle = cls.color;
     ctx.shadowColor = cls.color;
-    ctx.shadowBlur = 15;
+    ctx.shadowBlur = mobile ? 10 : 15;
     if (cls.shape === 'diamond') {
+      const sz = mobile ? 15 : 20;
       ctx.beginPath();
-      ctx.moveTo(cx + cardW / 2, cardY + 30);
-      ctx.lineTo(cx + cardW / 2 + 20, cardY + 55);
-      ctx.lineTo(cx + cardW / 2, cardY + 80);
-      ctx.lineTo(cx + cardW / 2 - 20, cardY + 55);
+      ctx.moveTo(cx + cardW / 2, iconY);
+      ctx.lineTo(cx + cardW / 2 + sz, iconCenterY);
+      ctx.lineTo(cx + cardW / 2, iconCenterY + (iconCenterY - iconY));
+      ctx.lineTo(cx + cardW / 2 - sz, iconCenterY);
       ctx.closePath();
       ctx.fill();
     } else {
       ctx.beginPath();
-      ctx.arc(cx + cardW / 2, cardY + 55, 20, 0, Math.PI * 2);
+      ctx.arc(cx + cardW / 2, iconCenterY, mobile ? 15 : 20, 0, Math.PI * 2);
       ctx.fill();
     }
     ctx.shadowBlur = 0;
 
     ctx.fillStyle = cls.color;
-    ctx.font = 'bold 16px monospace';
-    ctx.fillText(cls.name, cx + cardW / 2, cardY + 110);
+    ctx.font = `bold ${mobile ? 12 : 16}px monospace`;
+    ctx.fillText(cls.name, cx + cardW / 2, cardY + (mobile ? 85 : 110));
 
     ctx.fillStyle = '#aaa';
-    ctx.font = '11px monospace';
-    ctx.fillText(cls.desc, cx + cardW / 2, cardY + 135);
+    ctx.font = `${mobile ? 9 : 11}px monospace`;
+    ctx.fillText(cls.desc, cx + cardW / 2, cardY + (mobile ? 105 : 135));
 
-    ctx.fillStyle = '#666';
-    ctx.font = '12px monospace';
-    ctx.fillText(`[${i + 1}]`, cx + cardW / 2, cardY + cardH - 8);
+    if (!mobile) {
+      ctx.fillStyle = '#666';
+      ctx.font = '12px monospace';
+      ctx.fillText(`[${i + 1}]`, cx + cardW / 2, cardY + cardH - 8);
+    }
   }
 
   ctx.fillStyle = '#666';
-  ctx.font = '12px monospace';
-  ctx.fillText(isTouchDevice ? 'Tap a class to select' : 'Press 1 or 2 to select', width / 2, height / 2 + 160);
+  ctx.font = `${mobile ? 10 : 12}px monospace`;
+  ctx.fillText(isTouchDevice ? 'Tap a class to select' : 'Press 1 or 2 to select', width / 2, cardY + cardH + (mobile ? 20 : 40));
 
   ctx.restore();
 }
