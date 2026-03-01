@@ -10,6 +10,7 @@ export interface WeaponLevelScaling {
 export interface WeaponDef {
   id: string;
   name: string;
+  description: string;
   targeting: TargetingType;
   pattern: AttackPattern;
   tags: string[];
@@ -34,6 +35,7 @@ export const WEAPON_DEFS: Record<string, WeaponDef> = {
   warrior_cleave: {
     id: 'warrior_cleave',
     name: 'Cleave',
+    description: 'Wide melee sweep that hits all nearby enemies in an arc.',
     targeting: TargetingType.Closest,
     pattern: AttackPattern.Sweep,
     tags: ['melee', 'area'],
@@ -58,6 +60,7 @@ export const WEAPON_DEFS: Record<string, WeaponDef> = {
   warrior_axes: {
     id: 'warrior_axes',
     name: 'Throwing Axes',
+    description: 'Boomerang axes that pierce through enemies and return.',
     targeting: TargetingType.Closest,
     pattern: AttackPattern.Boomerang,
     tags: ['projectile', 'ranged'],
@@ -83,6 +86,7 @@ export const WEAPON_DEFS: Record<string, WeaponDef> = {
   warrior_banner: {
     id: 'warrior_banner',
     name: 'War Banner',
+    description: 'Plants a damaging zone on the ground that burns enemies over time.',
     targeting: TargetingType.Closest,
     pattern: AttackPattern.GroundZone,
     tags: ['area', 'zone'],
@@ -106,6 +110,7 @@ export const WEAPON_DEFS: Record<string, WeaponDef> = {
   warrior_flail: {
     id: 'warrior_flail',
     name: 'Iron Flail',
+    description: 'Unleashes a burst of projectiles in all directions.',
     targeting: TargetingType.Aoe,
     pattern: AttackPattern.Spread,
     tags: ['projectile', 'area'],
@@ -133,6 +138,7 @@ export const WEAPON_DEFS: Record<string, WeaponDef> = {
   caster_bolt: {
     id: 'caster_bolt',
     name: 'Arcane Bolt',
+    description: 'Rapid-fire magic projectiles that target the nearest enemy.',
     targeting: TargetingType.Closest,
     pattern: AttackPattern.SingleProjectile,
     tags: ['projectile', 'ranged', 'magic'],
@@ -158,6 +164,7 @@ export const WEAPON_DEFS: Record<string, WeaponDef> = {
   caster_chain: {
     id: 'caster_chain',
     name: 'Chain Lightning',
+    description: 'Lightning bolt that jumps between nearby enemies.',
     targeting: TargetingType.Random,
     pattern: AttackPattern.Chain,
     tags: ['chain', 'magic'],
@@ -182,6 +189,7 @@ export const WEAPON_DEFS: Record<string, WeaponDef> = {
   caster_frostorbs: {
     id: 'caster_frostorbs',
     name: 'Frost Orbs',
+    description: 'Icy orbs that orbit around you, damaging anything they touch.',
     targeting: TargetingType.Orbital,
     pattern: AttackPattern.Orbital,
     tags: ['orbital', 'magic'],
@@ -206,6 +214,7 @@ export const WEAPON_DEFS: Record<string, WeaponDef> = {
   caster_runes: {
     id: 'caster_runes',
     name: 'Runic Barrage',
+    description: 'Rains explosive runes at random enemy locations.',
     targeting: TargetingType.Random,
     pattern: AttackPattern.RunicBarrage,
     tags: ['area', 'magic'],

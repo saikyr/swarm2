@@ -28,6 +28,12 @@ let abilityBtnX = 0;
 let abilityBtnY = 0;
 const BTN_RADIUS = 32;
 
+// --- Pause button (top-right during gameplay) ---
+let pauseBtnX = 0;
+let pauseBtnY = 0;
+const PAUSE_BTN_SIZE = 24;
+let pauseTapped = false;
+
 // --- Tap passthrough for menu clicks ---
 let tapX = 0;
 let tapY = 0;
@@ -59,6 +65,14 @@ export function consumeTap(): { x: number; y: number } | null {
   return null;
 }
 
+export function consumePauseTap(): boolean {
+  if (pauseTapped) {
+    pauseTapped = false;
+    return true;
+  }
+  return false;
+}
+
 function hitTestButton(tx: number, ty: number, bx: number, by: number): boolean {
   const dx = tx - bx;
   const dy = ty - by;
@@ -74,6 +88,12 @@ export function setupTouchListeners(canvas: HTMLCanvasElement): void {
       const t = e.changedTouches[i];
       const x = t.clientX - rect.left;
       const y = t.clientY - rect.top;
+
+      // Check pause button (top-right)
+      if (pauseBtnX > 0 && Math.abs(x - pauseBtnX) < PAUSE_BTN_SIZE + 8 && Math.abs(y - pauseBtnY) < PAUSE_BTN_SIZE + 8) {
+        pauseTapped = true;
+        continue;
+      }
 
       // Check buttons first (right side)
       if (hitTestButton(x, y, dashBtnX, dashBtnY)) {
@@ -214,6 +234,24 @@ export function drawTouchControls(
   ctx.fillStyle = '#fff';
   ctx.font = 'bold 11px monospace';
   ctx.fillText('ABILITY', abilityBtnX, abilityBtnY);
+
+  // --- Pause button (top-right) ---
+  pauseBtnX = width - 36;
+  pauseBtnY = 36;
+  ctx.globalAlpha = 0.4;
+  ctx.fillStyle = '#333';
+  ctx.strokeStyle = '#888';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.roundRect(pauseBtnX - PAUSE_BTN_SIZE, pauseBtnY - PAUSE_BTN_SIZE, PAUSE_BTN_SIZE * 2, PAUSE_BTN_SIZE * 2, 6);
+  ctx.fill();
+  ctx.stroke();
+
+  // Draw pause icon (two vertical bars)
+  ctx.globalAlpha = 0.7;
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(pauseBtnX - 7, pauseBtnY - 10, 5, 20);
+  ctx.fillRect(pauseBtnX + 2, pauseBtnY - 10, 5, 20);
 
   ctx.restore();
 }

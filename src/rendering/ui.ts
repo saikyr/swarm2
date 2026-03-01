@@ -14,6 +14,7 @@ export interface UpgradeCard {
   description: string;
   rarity: Rarity;
   type?: 'stat' | 'weapon_levelup' | 'overclock';
+  weaponId?: string;
   weaponName?: string;
   overclockTier?: 'balanced' | 'unstable';
   apply: () => void;
@@ -104,62 +105,67 @@ export function drawHUD(
 }
 
 function drawWeaponSlots(ctx: CanvasRenderingContext2D, slots: Weapon[], screenH: number): void {
-  const slotSize = 44;
-  const gap = 6;
+  const slotW = 150;
+  const slotH = 32;
+  const gap = 4;
   const startX = 16;
-  const startY = screenH - (slots.length * (slotSize + gap)) - 10;
+  const startY = screenH - (slots.length * (slotH + gap)) - 10;
 
   for (let i = 0; i < slots.length; i++) {
     const slot = slots[i];
-    const y = startY + i * (slotSize + gap);
+    const y = startY + i * (slotH + gap);
 
     // Background
     ctx.fillStyle = slot.locked ? '#111' : '#1a1a2e';
     ctx.strokeStyle = slot.locked ? '#333' : '#555';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.roundRect(startX, y, slotSize, slotSize, 4);
+    ctx.roundRect(startX, y, slotW, slotH, 4);
     ctx.fill();
     ctx.stroke();
 
     if (slot.locked) {
-      // Lock icon
       ctx.fillStyle = '#444';
-      ctx.font = '16px monospace';
+      ctx.font = '11px monospace';
       ctx.textAlign = 'center';
-      ctx.fillText('?', startX + slotSize / 2, y + slotSize / 2 + 5);
+      ctx.fillText('? Locked', startX + slotW / 2, y + slotH / 2 + 4);
       continue;
     }
 
-    // Weapon abbreviation
-    const abbr = slot.name.split(' ').map(w => w[0]).join('').toUpperCase();
-    ctx.fillStyle = '#ddd';
+    // Cooldown bar overlay
+    const cdPct = slot.cooldown > 0 ? Math.max(0, slot.cooldownTimer / slot.cooldown) : 0;
+    if (cdPct > 0) {
+      ctx.save();
+      ctx.globalAlpha = 0.3;
+      ctx.fillStyle = '#000';
+      ctx.beginPath();
+      ctx.roundRect(startX, y, slotW * cdPct, slotH, 4);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Weapon color indicator bar
+    ctx.fillStyle = slot.projectileColor;
+    ctx.fillRect(startX + 4, y + 6, 3, slotH - 12);
+
+    // Weapon name
+    ctx.fillStyle = cdPct > 0 ? '#888' : '#ddd';
     ctx.font = 'bold 11px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText(abbr, startX + slotSize / 2, y + 16);
+    ctx.textAlign = 'left';
+    ctx.fillText(slot.name, startX + 12, y + 13);
 
     // Level
     ctx.fillStyle = '#888';
     ctx.font = '9px monospace';
-    ctx.fillText(`Lv${slot.level}`, startX + slotSize / 2, y + 28);
+    ctx.textAlign = 'left';
+    ctx.fillText(`Lv.${slot.level}`, startX + 12, y + 25);
 
-    // Cooldown arc
-    const cdPct = slot.cooldown > 0 ? Math.max(0, slot.cooldownTimer / slot.cooldown) : 0;
-    if (cdPct > 0) {
-      ctx.save();
-      ctx.globalAlpha = 0.4;
-      ctx.fillStyle = '#000';
-      ctx.beginPath();
-      ctx.moveTo(startX + slotSize / 2, y + slotSize / 2);
-      ctx.arc(
-        startX + slotSize / 2, y + slotSize / 2,
-        slotSize / 2 - 2,
-        -Math.PI / 2,
-        -Math.PI / 2 + Math.PI * 2 * cdPct,
-      );
-      ctx.closePath();
-      ctx.fill();
-      ctx.restore();
+    // Overclocks indicator
+    if (slot.overclocks.length > 0) {
+      ctx.fillStyle = '#ffd700';
+      ctx.font = '9px monospace';
+      ctx.textAlign = 'right';
+      ctx.fillText(`OC×${slot.overclocks.length}`, startX + slotW - 6, y + 25);
     }
   }
 }
@@ -223,6 +229,7 @@ export function drawUpgradeMenu(
   mouseX: number,
   mouseY: number,
   mouseClicked: boolean,
+  newWeaponUnlock?: string | null,
 ): number | null {
   const { ctx, width, height } = cc;
   ctx.save();
@@ -231,14 +238,25 @@ export function drawUpgradeMenu(
   ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
   ctx.fillRect(0, 0, width, height);
 
+  // Weapon unlock notification banner
+  if (newWeaponUnlock) {
+    ctx.fillStyle = '#44aaff';
+    ctx.font = 'bold 16px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(`NEW WEAPON UNLOCKED: ${newWeaponUnlock}`, width / 2, height / 2 - 190);
+    ctx.fillStyle = '#88ccff';
+    ctx.font = '11px monospace';
+    ctx.fillText('It will auto-fire when enemies are in range', width / 2, height / 2 - 172);
+  }
+
   // Title
   ctx.fillStyle = '#fff';
   ctx.font = 'bold 28px monospace';
   ctx.textAlign = 'center';
-  ctx.fillText('LEVEL UP!', width / 2, height / 2 - 160);
+  ctx.fillText('LEVEL UP!', width / 2, height / 2 - 150);
   ctx.font = '14px monospace';
   ctx.fillStyle = '#888';
-  ctx.fillText('Choose an upgrade (1/2/3 or click)', width / 2, height / 2 - 130);
+  ctx.fillText(isTouchDevice ? 'Tap an upgrade to select' : 'Choose an upgrade (1/2/3 or click)', width / 2, height / 2 - 124);
 
   // Cards
   const cardW = 180;
@@ -440,8 +458,8 @@ export function drawLobby(cc: CanvasContext, lobby: Lobby, mode: 'menu' | 'join'
     // Host/Join selection
     ctx.fillStyle = '#fff';
     ctx.font = '18px monospace';
-    ctx.fillText('[1] Host a Game', width / 2, height / 2 - 20);
-    ctx.fillText('[2] Join a Game', width / 2, height / 2 + 20);
+    ctx.fillText(isTouchDevice ? 'Tap above: Host a Game' : '[1] Host a Game', width / 2, height / 2 - 20);
+    ctx.fillText(isTouchDevice ? 'Tap below: Join a Game' : '[2] Join a Game', width / 2, height / 2 + 20);
   } else {
     // Join code input screen
     ctx.fillStyle = '#aaa';
@@ -462,7 +480,7 @@ export function drawLobby(cc: CanvasContext, lobby: Lobby, mode: 'menu' | 'join'
     if (input.length === 4) {
       ctx.fillStyle = '#00ff88';
       ctx.font = '12px monospace';
-      ctx.fillText('Press ENTER to join', width / 2, boxY + boxH + 20);
+      ctx.fillText(isTouchDevice ? 'Tap to join' : 'Press ENTER to join', width / 2, boxY + boxH + 20);
     }
   }
 
@@ -474,7 +492,7 @@ export function drawLobby(cc: CanvasContext, lobby: Lobby, mode: 'menu' | 'join'
 
   ctx.fillStyle = '#555';
   ctx.font = '12px monospace';
-  ctx.fillText('Press ESC to go back', width / 2, height - 40);
+  ctx.fillText(isTouchDevice ? 'Tap bottom to go back' : 'Press ESC to go back', width / 2, height - 40);
 
   ctx.restore();
 }
@@ -519,7 +537,10 @@ export function drawWaitingRoom(cc: CanvasContext, lobby: Lobby, isHost: boolean
     const allReady = lobby.players.length >= 1 && lobby.players.every(p => lobby.classSelections.has(p.playerId));
     ctx.fillStyle = allReady ? '#00ff88' : '#555';
     ctx.font = '16px monospace';
-    ctx.fillText(allReady ? 'Press ENTER to start' : 'Waiting for all players to pick a class...', width / 2, height / 2 + 140);
+    const startText = allReady
+      ? (isTouchDevice ? 'Tap to start' : 'Press ENTER to start')
+      : 'Waiting for all players to pick a class...';
+    ctx.fillText(startText, width / 2, height / 2 + 140);
   } else {
     ctx.fillStyle = '#888';
     ctx.font = '14px monospace';
@@ -528,7 +549,7 @@ export function drawWaitingRoom(cc: CanvasContext, lobby: Lobby, isHost: boolean
 
   ctx.fillStyle = '#555';
   ctx.font = '12px monospace';
-  ctx.fillText('Press ESC to leave', width / 2, height - 40);
+  ctx.fillText(isTouchDevice ? 'Tap bottom to leave' : 'Press ESC to leave', width / 2, height - 40);
 
   ctx.restore();
 }
@@ -603,7 +624,7 @@ export function drawClassSelect(cc: CanvasContext, selectedIndex: number): void 
 
   ctx.fillStyle = '#666';
   ctx.font = '12px monospace';
-  ctx.fillText(isTouchDevice ? 'Tap to select' : 'Press 1 or 2 to select', width / 2, height / 2 + 160);
+  ctx.fillText(isTouchDevice ? 'Tap a class to select' : 'Press 1 or 2 to select', width / 2, height / 2 + 160);
 
   ctx.restore();
 }

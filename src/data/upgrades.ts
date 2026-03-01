@@ -3,7 +3,7 @@ import type { UpgradeCard } from '../rendering/ui';
 import { PLAYER, WEAPON, WEAPON_OWNER, HEALTH } from '../components';
 import type { Player, Weapon, WeaponOwner, Health } from '../components';
 import { RARITY_WEIGHTS, type Rarity } from '../constants';
-import { WEAPON_DEFS, applyLevelScaling } from './weapons';
+import { WEAPON_DEFS, applyLevelScaling, type WeaponDef } from './weapons';
 import { getOverclocksForWeapon } from './overclocks';
 
 interface UpgradeDef {
@@ -100,32 +100,73 @@ function getPlayerWeapons(world: World, playerEntity?: number): Weapon[] {
   return results;
 }
 
+function buildWeaponLevelupDesc(weapon: Weapon, def: WeaponDef | undefined, nextLevel: number): string {
+  const parts: string[] = [];
+  parts.push(`Lv.${weapon.level} -> ${nextLevel}`);
+
+  if (def) {
+    // Damage increase
+    const curDmg = def.base.damage * Math.pow(def.levelScaling.damageMultiplier, weapon.level - 1);
+    const nextDmg = def.base.damage * Math.pow(def.levelScaling.damageMultiplier, nextLevel - 1);
+    const dmgPct = Math.round((nextDmg / curDmg - 1) * 100);
+    if (dmgPct > 0) parts.push(`+${dmgPct}% dmg`);
+
+    // Cooldown decrease
+    const curCd = def.base.cooldown * Math.pow(def.levelScaling.cooldownMultiplier, weapon.level - 1);
+    const nextCd = def.base.cooldown * Math.pow(def.levelScaling.cooldownMultiplier, nextLevel - 1);
+    const cdPct = Math.round((1 - nextCd / curCd) * 100);
+    if (cdPct > 0) parts.push(`+${cdPct}% speed`);
+
+    // Bonus count at this level
+    if (def.levelScaling.bonusCountAtLevels?.includes(nextLevel)) {
+      parts.push('+1 count');
+    }
+
+    // Overclock threshold hint
+    if ([6, 12, 18].includes(nextLevel)) {
+      parts.push(nextLevel === 18 ? 'UNSTABLE overclock!' : 'Overclock!');
+    }
+  }
+
+  return parts.join(' | ');
+}
+
 export function generateUpgradeCards(world: World, count = 3, playerEntity?: number): UpgradeCard[] {
   const cards: UpgradeCard[] = [];
   const usedIds = new Set<string>();
   const playerWeapons = getPlayerWeapons(world, playerEntity);
 
+  // DRG:S-inspired pacing: weapon levelup chance scales with player level.
+  // Early game (levels 1-3) favors stat cards so you build a foundation.
+  // Mid/late game ramps weapon cards as you unlock more weapons.
+  let playerLevel = 1;
+  if (playerEntity !== undefined) {
+    const p = world.getComponent<Player>(playerEntity, PLAYER);
+    if (p) playerLevel = p.level;
+  }
+  const weaponChance = Math.min(0.55, 0.2 + playerLevel * 0.025);
+
   for (let i = 0; i < count; i++) {
     const roll = Math.random();
 
-    // 45% weapon levelup
-    if (roll < 0.45 && playerWeapons.length > 0) {
+    if (roll < weaponChance && playerWeapons.length > 0) {
       const weapon = playerWeapons[Math.floor(Math.random() * playerWeapons.length)];
       const cardId = `levelup_${weapon.id}_${weapon.level}`;
       if (!usedIds.has(cardId)) {
         usedIds.add(cardId);
         const nextLevel = weapon.level + 1;
         const wRef = weapon;
+        const def = WEAPON_DEFS[wRef.id];
         cards.push({
           id: cardId,
           name: wRef.name,
-          description: `Level up ${wRef.name} (Lv.${wRef.level} -> ${nextLevel})`,
+          description: buildWeaponLevelupDesc(wRef, def, nextLevel),
           rarity: nextLevel >= 10 ? 'rare' : nextLevel >= 5 ? 'magic' : 'common',
           type: 'weapon_levelup',
+          weaponId: wRef.id,
           weaponName: wRef.name,
           apply: () => {
             wRef.level = nextLevel;
-            const def = WEAPON_DEFS[wRef.id];
             if (def) applyLevelScaling(wRef, def);
           },
         });

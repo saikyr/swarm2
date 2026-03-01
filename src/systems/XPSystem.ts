@@ -17,7 +17,9 @@ export const XPSystem: System = {
     for (const entity of world.query(PLAYER)) {
       const player = world.getComponent<Player>(entity, PLAYER)!;
 
-      while (player.xp >= player.xpToNext) {
+      // Level up at most once per tick — remaining XP carries over to the next tick.
+      // This prevents multiple onLevelUp calls from overwriting upgrade cards.
+      if (player.xp >= player.xpToNext) {
         player.xp -= player.xpToNext;
         player.level++;
         player.xpToNext = Math.floor(XP_BASE_PER_LEVEL * Math.pow(XP_LEVEL_SCALE, player.level - 1));

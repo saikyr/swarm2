@@ -110,6 +110,16 @@ export const HealthSystem: System = {
         // Spawn XP orb
         spawnXpOrb(world, transform.pos.x, transform.pos.y, enemy.xpValue);
 
+        // Rare drops: health pickup (~3%) and XP magnet (~1%), elites have higher chance
+        const dropRoll = Math.random();
+        const healthChance = enemy.isElite ? 0.25 : 0.03;
+        const magnetChance = enemy.isElite ? 0.08 : 0.01;
+        if (dropRoll < healthChance) {
+          spawnHealthPickup(world, transform.pos.x, transform.pos.y);
+        } else if (dropRoll < healthChance + magnetChance) {
+          spawnMagnetPickup(world, transform.pos.x, transform.pos.y);
+        }
+
         world.destroyEntity(entity);
       }
     }
@@ -141,6 +151,68 @@ export const HealthSystem: System = {
     }
   },
 };
+
+function spawnHealthPickup(world: World, x: number, y: number): void {
+  const entity = world.createEntity();
+  const offsetX = (Math.random() - 0.5) * 16;
+  const offsetY = (Math.random() - 0.5) * 16;
+  world.addComponent(entity, TRANSFORM, {
+    pos: { x: x + offsetX, y: y + offsetY },
+    prevPos: { x: x + offsetX, y: y + offsetY },
+    rotation: 0,
+  });
+  world.addComponent(entity, RENDERABLE, {
+    shape: 'diamond',
+    radius: 6,
+    color: '#ff4466',
+    glowColor: '#ff4466',
+    glowSize: 10,
+    alpha: 1,
+    zIndex: 1,
+  });
+  world.addComponent(entity, COLLIDER, {
+    radius: 6,
+    layer: CollisionLayer.Pickup,
+    mask: [CollisionLayer.Player],
+  });
+  world.addComponent(entity, PICKUP, {
+    type: 'health',
+    value: 15,
+    magnetRadius: 80,
+    pickupRadius: 14,
+    attracted: false,
+  });
+}
+
+function spawnMagnetPickup(world: World, x: number, y: number): void {
+  const entity = world.createEntity();
+  world.addComponent(entity, TRANSFORM, {
+    pos: { x, y },
+    prevPos: { x, y },
+    rotation: 0,
+  });
+  world.addComponent(entity, RENDERABLE, {
+    shape: 'circle',
+    radius: 7,
+    color: '#ffdd44',
+    glowColor: '#ffdd44',
+    glowSize: 14,
+    alpha: 1,
+    zIndex: 1,
+  });
+  world.addComponent(entity, COLLIDER, {
+    radius: 7,
+    layer: CollisionLayer.Pickup,
+    mask: [CollisionLayer.Player],
+  });
+  world.addComponent(entity, PICKUP, {
+    type: 'magnet',
+    value: 0,
+    magnetRadius: 100,
+    pickupRadius: 16,
+    attracted: false,
+  });
+}
 
 function spawnXpOrb(world: World, x: number, y: number, value: number): void {
   const entity = world.createEntity();

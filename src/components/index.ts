@@ -188,7 +188,7 @@ export interface XpOrb {
 }
 
 export interface Pickup {
-  type: 'xp' | 'health' | 'currency';
+  type: 'xp' | 'health' | 'currency' | 'magnet';
   value: number;
   magnetRadius: number;
   pickupRadius: number;

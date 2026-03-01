@@ -10,7 +10,7 @@ import {
 import { PLAYER_HP, PLAYER_RADIUS, WORLD_WIDTH, WORLD_HEIGHT, type ClassType } from '../constants';
 import type { MetaProgression } from './meta-progression';
 
-export const WEAPON_UNLOCK_LEVELS = [1, 3, 6, 10];
+export const WEAPON_UNLOCK_LEVELS = [1, 4, 8, 14];
 
 export interface PlayerConfig {
   playerId: number;

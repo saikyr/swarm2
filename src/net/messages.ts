@@ -115,6 +115,7 @@ export interface UpgradeOptionsMsg extends NetMessage {
     description: string;
     rarity: string;
     cardType?: string;
+    weaponId?: string;
     weaponName?: string;
     overclockTier?: string;
   }>;

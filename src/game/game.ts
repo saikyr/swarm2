@@ -51,7 +51,7 @@ import { setEntityIdOffset } from '../ecs/entity';
 import { spawnBeamFx } from '../rendering/particles';
 import { DAMAGE_NUMBER_RISE_SPEED } from '../constants';
 import type { DamageNumberData, DamageFlash, Transform as TransformType } from '../components';
-import { isTouchDevice, setupTouchListeners, consumeTap, drawTouchControls } from '../input/touch';
+import { isTouchDevice, setupTouchListeners, consumeTap, consumePauseTap, drawTouchControls } from '../input/touch';
 
 export type NetworkRole = 'solo' | 'host' | 'client';
 
@@ -73,6 +73,7 @@ export class Game {
   private mouseY = 0;
   private mouseClicked = false;
   private weaponSlotData: Weapon[] = [];
+  private newlyUnlockedWeapon: string | null = null; // weapon name to show as notification
 
   // Multi-player state
   localPlayerId = 0;
@@ -209,8 +210,45 @@ export class Game {
       } else {
         this.handleClassSelected(ClassType.Caster);
       }
+    } else if (state === GameState.Lobby) {
+      this.handleLobbyTap();
+    } else if (state === GameState.WaitingForPlayers) {
+      // Bottom strip → leave; top area → start if host + ready
+      if (this.mouseY > this.cc.height - 60) {
+        this.disconnectNetwork();
+        changeState(this.stateMgr, GameState.Menu);
+      } else if (this.networkRole === 'host' && this.lobby.players.length >= 1 && this.allPlayersReady()) {
+        this.hostStartGame();
+      }
+    } else if (state === GameState.Paused) {
+      changeState(this.stateMgr, GameState.Playing);
     } else if (state === GameState.GameOver) {
       this.endRun();
+    }
+  }
+
+  private handleLobbyTap(): void {
+    if (this.lobbyMode === 'menu') {
+      // Top area → host, bottom area → join
+      if (this.mouseY < this.cc.height * 0.5) {
+        this.createRoom();
+      } else if (this.mouseY < this.cc.height - 60) {
+        // Use prompt for room code entry on mobile
+        const code = window.prompt('Enter 4-character room code:');
+        if (code && code.length === 4) {
+          this.joinRoom(code.toUpperCase());
+        }
+      } else {
+        // Bottom strip → back
+        this.disconnectNetwork();
+        changeState(this.stateMgr, GameState.Menu);
+      }
+    } else {
+      // In join input mode, bottom strip → back to lobby menu
+      if (this.mouseY > this.cc.height - 60) {
+        this.lobbyMode = 'menu';
+        this.lobbyInput = '';
+      }
     }
   }
 
@@ -401,6 +439,7 @@ export class Game {
         const unlockLevel = WEAPON_UNLOCK_LEVELS[wo.slotIndex] ?? 999;
         if (weapon.locked && player.level >= unlockLevel) {
           weapon.locked = false;
+          this.newlyUnlockedWeapon = weapon.name;
         }
       }
     }
@@ -417,6 +456,7 @@ export class Game {
       this.upgradeCards = generateUpgradeCards(this.world, 3, playerEntity);
       this.selectedUpgrade = 0;
       this.upgradingPlayerId = player.playerId;
+      this.mouseClicked = false; // Clear stale clicks to prevent auto-selecting an upgrade
       changeState(this.stateMgr, GameState.Upgrading);
     } else if (this.networkRole === 'host') {
       this.upgradeQueue.push(player.playerId);
@@ -447,6 +487,7 @@ export class Game {
     this.selectedUpgrade = 0;
 
     if (playerId === this.localPlayerId) {
+      this.mouseClicked = false; // Clear stale clicks to prevent auto-selecting an upgrade
       changeState(this.stateMgr, GameState.Upgrading);
     } else {
       changeState(this.stateMgr, GameState.Upgrading);
@@ -457,7 +498,7 @@ export class Game {
           playerId,
           cards: this.upgradeCards.map((c, i) => ({
             index: i, id: c.id, name: c.name, description: c.description,
-            rarity: c.rarity, cardType: c.type, weaponName: c.weaponName,
+            rarity: c.rarity, cardType: c.type, weaponId: c.weaponId, weaponName: c.weaponName,
             overclockTier: c.overclockTier,
           })),
         });
@@ -474,14 +515,16 @@ export class Game {
       const pd = this.playerData.get(this.upgradingPlayerId) ?? this.getLocalPlayerData();
       const weaponEnts = pd?.weaponEntities ?? [];
 
-      if (card.type === 'weapon_levelup') {
+      // Check if the specific weapon that was just leveled hit an overclock threshold
+      if (card.type === 'weapon_levelup' && card.weaponId) {
         for (const we of weaponEnts) {
           const w = this.world.getComponent<Weapon>(we, WEAPON);
-          if (w && [6, 12, 18].includes(w.level)) {
+          if (w && w.id === card.weaponId && [6, 12, 18].includes(w.level)) {
             const ocCards = generateOverclockCards(w);
             if (ocCards.length > 0) {
               this.upgradeCards = ocCards;
               this.selectedUpgrade = 0;
+              this.mouseClicked = false;
               if (this.networkRole === 'host' && this.upgradingPlayerId !== this.localPlayerId && this.netHost) {
                 this.netHost.sendToPlayer(this.upgradingPlayerId, {
                   type: MessageType.UpgradeOptions, playerId: this.upgradingPlayerId,
@@ -494,6 +537,7 @@ export class Game {
               }
               return;
             }
+            break; // Only check the specific weapon
           }
         }
       }
@@ -741,11 +785,12 @@ export class Game {
     this.upgradeCards = msg.cards.map(c => ({
       id: c.id, name: c.name, description: c.description,
       rarity: c.rarity as any, type: c.cardType as any,
-      weaponName: c.weaponName, overclockTier: c.overclockTier as any,
+      weaponId: c.weaponId, weaponName: c.weaponName, overclockTier: c.overclockTier as any,
       apply: () => {},
     }));
     this.selectedUpgrade = 0;
     this.upgradingPlayerId = this.localPlayerId;
+    this.mouseClicked = false; // Clear stale clicks to prevent auto-selecting an upgrade
     changeState(this.stateMgr, GameState.Upgrading);
   }
 
@@ -853,6 +898,9 @@ export class Game {
             this.world.update(TICK_DT);
             this.accumulator -= TICK_DT;
             steps++;
+            // Stop ticking if a level-up (or other event) changed the state away from Playing.
+            // Remaining accumulator is preserved so no time is lost.
+            if (this.stateMgr.current !== GameState.Playing) break;
           }
         }
 
@@ -884,6 +932,11 @@ export class Game {
 
     // Bridge touch taps into mouse click system
     if (isTouchDevice) {
+      // Check pause button tap during gameplay
+      if (consumePauseTap() && this.stateMgr.current === GameState.Playing) {
+        changeState(this.stateMgr, GameState.Paused);
+      }
+
       const tap = consumeTap();
       if (tap) {
         this.mouseX = tap.x;
@@ -1005,8 +1058,9 @@ export class Game {
 
       if (state === GameState.Upgrading) {
         if (this.upgradingPlayerId === this.localPlayerId || this.networkRole === 'solo') {
-          const clicked = drawUpgradeMenu(this.cc, this.upgradeCards, this.selectedUpgrade, this.mouseX, this.mouseY, this.mouseClicked);
+          const clicked = drawUpgradeMenu(this.cc, this.upgradeCards, this.selectedUpgrade, this.mouseX, this.mouseY, this.mouseClicked, this.newlyUnlockedWeapon);
           if (clicked !== null) {
+            this.newlyUnlockedWeapon = null;
             this.pickUpgrade(clicked);
           }
         } else {
@@ -1029,7 +1083,7 @@ export class Game {
         this.cc.ctx.fillText('PAUSED', this.cc.width / 2, this.cc.height / 2);
         this.cc.ctx.font = '14px monospace';
         this.cc.ctx.fillStyle = '#888';
-        this.cc.ctx.fillText('Press ESC to resume', this.cc.width / 2, this.cc.height / 2 + 30);
+        this.cc.ctx.fillText(isTouchDevice ? 'Tap to resume' : 'Press ESC to resume', this.cc.width / 2, this.cc.height / 2 + 30);
         this.cc.ctx.restore();
       }
     }
