@@ -569,7 +569,7 @@ export class Game {
       if (card.type === 'weapon_levelup' && card.weaponId) {
         for (const we of weaponEnts) {
           const w = this.world.getComponent<Weapon>(we, WEAPON);
-          if (w && w.id === card.weaponId && [6, 12, 18].includes(w.level)) {
+          if (w && w.id === card.weaponId && [5, 10, 15].includes(w.level)) {
             const ocCards = generateOverclockCards(w);
             if (ocCards.length > 0) {
               this.upgradeCards = ocCards;
@@ -1160,7 +1160,7 @@ export class Game {
         this.weaponSlotData.length = 0;
         for (const we of localData.weaponEntities) {
           const w = this.world.getComponent<Weapon>(we, WEAPON);
-          if (w && !w.locked) this.weaponSlotData.push(w);
+          if (w) this.weaponSlotData.push(w);
         }
 
         drawHUD(this.cc, player, health, this.run, {
@@ -1183,7 +1183,7 @@ export class Game {
           const wo = this.world.getComponent<WeaponOwner>(we, WEAPON_OWNER);
           if (wo && wo.owner === pe) {
             const w = this.world.getComponent<Weapon>(we, WEAPON);
-            if (w && !w.locked) this.weaponSlotData.push(w);
+            if (w) this.weaponSlotData.push(w);
           }
         }
 

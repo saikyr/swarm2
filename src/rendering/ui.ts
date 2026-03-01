@@ -7,6 +7,7 @@ import type { Vec2 } from '../utils/math';
 import type { World } from '../ecs/ecs';
 import type { Lobby } from '../game/lobby';
 import { isTouchDevice } from '../input/touch';
+import { WEAPON_UNLOCK_LEVELS } from '../game/player-manager';
 
 /** Portrait phone: narrow width + touch */
 function isNarrow(width: number): boolean {
@@ -197,10 +198,11 @@ function drawWeaponSlots(ctx: CanvasRenderingContext2D, slots: Weapon[], screenW
     ctx.stroke();
 
     if (slot.locked) {
-      ctx.fillStyle = '#444';
+      ctx.fillStyle = '#555';
       ctx.font = `${fontSize}px monospace`;
       ctx.textAlign = 'center';
-      ctx.fillText('? Locked', startX + slotW / 2, y + slotH / 2 + 4);
+      const unlockLv = WEAPON_UNLOCK_LEVELS[i] ?? '?';
+      ctx.fillText(`Unlocks Lv.${unlockLv}`, startX + slotW / 2, y + slotH / 2 + 4);
       continue;
     }
 

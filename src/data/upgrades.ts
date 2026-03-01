@@ -123,8 +123,8 @@ function buildWeaponLevelupDesc(weapon: Weapon, def: WeaponDef | undefined, next
     }
 
     // Overclock threshold hint
-    if ([6, 12, 18].includes(nextLevel)) {
-      parts.push(nextLevel === 18 ? 'UNSTABLE overclock!' : 'Overclock!');
+    if ([5, 10, 15].includes(nextLevel)) {
+      parts.push(nextLevel === 15 ? 'UNSTABLE overclock!' : 'Overclock!');
     }
   }
 
@@ -247,12 +247,12 @@ export function generateWeaponUnlockCards(world: World, playerEntity: number): U
   }));
 }
 
-// Generate overclock cards for a weapon that just hit level 6/12/18
+// Generate overclock cards for a weapon that just hit level 5/10/15
 export function generateOverclockCards(weapon: Weapon): UpgradeCard[] {
-  const OVERCLOCK_LEVELS = [6, 12, 18];
+  const OVERCLOCK_LEVELS = [5, 10, 15];
   if (!OVERCLOCK_LEVELS.includes(weapon.level)) return [];
 
-  const tier = weapon.level === 18 ? 'unstable' : 'balanced';
+  const tier = weapon.level === 15 ? 'unstable' : 'balanced';
   const available = getOverclocksForWeapon(weapon, tier)
     .filter(oc => !weapon.overclocks.includes(oc.id));
 
