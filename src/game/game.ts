@@ -51,7 +51,7 @@ import { setEntityIdOffset } from '../ecs/entity';
 import { spawnBeamFx } from '../rendering/particles';
 import { DAMAGE_NUMBER_RISE_SPEED } from '../constants';
 import type { DamageNumberData, DamageFlash, Transform as TransformType } from '../components';
-import { isTouchDevice, setupTouchListeners, consumeTap, consumePauseTap, setTouchMode, drawTouchControls } from '../input/touch';
+import { isTouchDevice, setupTouchListeners, consumeTap, consumePauseTap, clearPendingTaps, setTouchMode, drawTouchControls } from '../input/touch';
 
 export type NetworkRole = 'solo' | 'host' | 'client';
 
@@ -484,6 +484,7 @@ export class Game {
       this.selectedUpgrade = 0;
       this.upgradingPlayerId = player.playerId;
       this.mouseClicked = false; // Clear stale clicks to prevent auto-selecting an upgrade
+      clearPendingTaps(); // Clear buffered touch taps from gameplay
       changeState(this.stateMgr, GameState.Upgrading);
     } else if (this.networkRole === 'host') {
       this.upgradeQueue.push(player.playerId);
@@ -518,6 +519,7 @@ export class Game {
 
     if (playerId === this.localPlayerId) {
       this.mouseClicked = false; // Clear stale clicks to prevent auto-selecting an upgrade
+      clearPendingTaps(); // Clear buffered touch taps from gameplay
       changeState(this.stateMgr, GameState.Upgrading);
     } else {
       changeState(this.stateMgr, GameState.Upgrading);
@@ -555,6 +557,7 @@ export class Game {
               this.upgradeCards = ocCards;
               this.selectedUpgrade = 0;
               this.mouseClicked = false;
+              clearPendingTaps();
               if (this.networkRole === 'host' && this.upgradingPlayerId !== this.localPlayerId && this.netHost) {
                 this.netHost.sendToPlayer(this.upgradingPlayerId, {
                   type: MessageType.UpgradeOptions, playerId: this.upgradingPlayerId,
@@ -821,6 +824,7 @@ export class Game {
     this.selectedUpgrade = 0;
     this.upgradingPlayerId = this.localPlayerId;
     this.mouseClicked = false; // Clear stale clicks to prevent auto-selecting an upgrade
+    clearPendingTaps(); // Clear buffered touch taps from gameplay
     changeState(this.stateMgr, GameState.Upgrading);
   }
 
