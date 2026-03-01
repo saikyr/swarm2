@@ -4,6 +4,13 @@ export const isTouchDevice =
   typeof window !== 'undefined' &&
   ('ontouchstart' in window || navigator.maxTouchPoints > 0);
 
+// --- Touch mode: 'menu' = all touches are taps, 'gameplay' = joystick + buttons ---
+let touchMode: 'menu' | 'gameplay' = 'menu';
+
+export function setTouchMode(mode: 'menu' | 'gameplay'): void {
+  touchMode = mode;
+}
+
 // --- Joystick state (left half of screen) ---
 let joystickTouchId: number | null = null;
 let joystickOriginX = 0;
@@ -89,6 +96,16 @@ export function setupTouchListeners(canvas: HTMLCanvasElement): void {
       const x = t.clientX - rect.left;
       const y = t.clientY - rect.top;
 
+      // In menu mode, ALL touches are taps — no joystick/buttons
+      if (touchMode === 'menu') {
+        tapX = x;
+        tapY = y;
+        tapFired = true;
+        continue;
+      }
+
+      // --- Gameplay mode below ---
+
       // Check pause button (top-right)
       if (pauseBtnX > 0 && Math.abs(x - pauseBtnX) < PAUSE_BTN_SIZE + 8 && Math.abs(y - pauseBtnY) < PAUSE_BTN_SIZE + 8) {
         pauseTapped = true;
@@ -107,8 +124,8 @@ export function setupTouchListeners(canvas: HTMLCanvasElement): void {
         continue;
       }
 
-      // Left half → joystick
-      if (x < canvas.width * 0.5 && joystickTouchId === null) {
+      // Left half → joystick (use rect.width for CSS pixels, not canvas.width)
+      if (x < rect.width * 0.5 && joystickTouchId === null) {
         joystickTouchId = t.identifier;
         joystickOriginX = x;
         joystickOriginY = y;
@@ -118,7 +135,7 @@ export function setupTouchListeners(canvas: HTMLCanvasElement): void {
         continue;
       }
 
-      // Anything else → tap (for menus/upgrades)
+      // Anything else → tap (for upgrades during gameplay)
       tapX = x;
       tapY = y;
       tapFired = true;
