@@ -21,7 +21,8 @@ export class SpatialHash {
   clear(): void {
     // Increment frame generation instead of clearing maps — avoids GC pressure
     this.frameGen++;
-    this.currentGeneration = 0;
+    // Note: do NOT reset currentGeneration — it must increase monotonically
+    // so that query deduplication via entityGeneration never collides across frames
     // Periodically do a real clear to avoid unbounded growth from cells that are no longer used
     if (this.frameGen % 600 === 0) {
       this.cells.clear();
