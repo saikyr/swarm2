@@ -1158,8 +1158,8 @@ export class Game {
 
       if (player && health && playerT) {
         this.weaponSlotData.length = 0;
-        for (const we of localData.weaponEntities) {
-          const w = this.world.getComponent<Weapon>(we, WEAPON);
+        for (let i = 0; i < Math.min(localData.weaponEntities.length, WEAPON_UNLOCK_LEVELS.length); i++) {
+          const w = this.world.getComponent<Weapon>(localData.weaponEntities[i], WEAPON);
           if (w) this.weaponSlotData.push(w);
         }
 
@@ -1177,11 +1177,11 @@ export class Game {
       if (p.playerId === this.localPlayerId) {
         const health = this.world.getComponent<Health>(pe, HEALTH)!;
 
-        // Find weapon slots for this player
+        // Find weapon slots for this player (cap at 4 visible slots)
         this.weaponSlotData.length = 0;
         for (const we of this.world.query(WEAPON, WEAPON_OWNER)) {
           const wo = this.world.getComponent<WeaponOwner>(we, WEAPON_OWNER);
-          if (wo && wo.owner === pe) {
+          if (wo && wo.owner === pe && wo.slotIndex < WEAPON_UNLOCK_LEVELS.length) {
             const w = this.world.getComponent<Weapon>(we, WEAPON);
             if (w) this.weaponSlotData.push(w);
           }
