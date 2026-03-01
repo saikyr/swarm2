@@ -426,27 +426,19 @@ export function eliteDeath(e: AudioEngine, dest: Dest): number {
 
 export function dashSound(e: AudioEngine, dest: Dest): number {
   const t = e.now;
-  const dur = 0.12;
-  // Noise whoosh
+  const dur = 0.08;
+  // Quick bandpass noise sweep — air displacement feel
   const noise = e.createNoise();
-  const hp = e.ctx.createBiquadFilter();
-  hp.type = 'highpass';
-  hp.frequency.value = 1000;
-  const gn = e.ctx.createGain();
-  gn.gain.setValueAtTime(0.18, t);
-  gn.gain.exponentialRampToValueAtTime(0.001, t + dur);
-  noise.connect(hp).connect(gn).connect(dest);
+  const bp = e.ctx.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.frequency.setValueAtTime(2000, t);
+  bp.frequency.exponentialRampToValueAtTime(400, t + dur);
+  bp.Q.value = 1.5;
+  const g = e.ctx.createGain();
+  g.gain.setValueAtTime(0.15, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  noise.connect(bp).connect(g).connect(dest);
   noise.start(t); noise.stop(t + dur);
-  // Thrust sine
-  const osc = e.ctx.createOscillator();
-  osc.type = 'sine';
-  osc.frequency.setValueAtTime(vary(200), t);
-  osc.frequency.exponentialRampToValueAtTime(300, t + 0.08);
-  const go = e.ctx.createGain();
-  go.gain.setValueAtTime(0.2, t);
-  go.gain.exponentialRampToValueAtTime(0.001, t + dur);
-  osc.connect(go).connect(dest);
-  osc.start(t); osc.stop(t + dur);
   return dur;
 }
 
