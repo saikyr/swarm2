@@ -145,28 +145,32 @@ export const HealthSystem: System = {
     }
 
     // Check player death — enter downed state instead of destroying
-    for (const entity of world.query(HEALTH, PLAYER, TRANSFORM)) {
+    const allPlayers = world.query(HEALTH, PLAYER, TRANSFORM);
+    const isMultiplayer = allPlayers.length > 1;
+    for (const entity of allPlayers) {
       const health = world.getComponent<Health>(entity, HEALTH)!;
       const player = world.getComponent<Player>(entity, PLAYER)!;
       if (health.current <= 0 && !player.downed) {
         health.current = 0;
         player.downed = true;
 
-        // Spawn revive zone at downed player position
-        const transform = world.getComponent<Transform>(entity, TRANSFORM)!;
-        const rzEntity = world.createEntity();
-        world.addComponent<Transform>(rzEntity, TRANSFORM, {
-          pos: { ...transform.pos },
-          prevPos: { ...transform.pos },
-          rotation: 0,
-        });
-        world.addComponent<ReviveZone>(rzEntity, REVIVE_ZONE, {
-          targetEntity: entity,
-          radius: 80,
-          progress: 0,
-          reviveTime: 3,
-          reviverInZone: false,
-        });
+        // Only spawn revive zone in multiplayer (another player can revive)
+        if (isMultiplayer) {
+          const transform = world.getComponent<Transform>(entity, TRANSFORM)!;
+          const rzEntity = world.createEntity();
+          world.addComponent<Transform>(rzEntity, TRANSFORM, {
+            pos: { ...transform.pos },
+            prevPos: { ...transform.pos },
+            rotation: 0,
+          });
+          world.addComponent<ReviveZone>(rzEntity, REVIVE_ZONE, {
+            targetEntity: entity,
+            radius: 80,
+            progress: 0,
+            reviveTime: 3,
+            reviverInZone: false,
+          });
+        }
       }
     }
   },
