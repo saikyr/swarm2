@@ -10,6 +10,9 @@ import type { RunContext } from '../game/run';
 export let runRef: RunContext | null = null;
 export function setRunRef(r: RunContext): void { runRef = r; }
 
+// Elite spawn cooldown — prevents clustering of multiple elites at once
+let eliteSpawnCooldown = 0;
+
 const ELITE_PREFIXES = ['Vile', 'Cursed', 'Ancient', 'Dire', 'Fell', 'Dread', 'Shadow', 'Blood', 'Iron', 'Storm'];
 const ELITE_NAMES = ['Brute', 'Reaver', 'Warden', 'Crusher', 'Stalker', 'Ravager', 'Hulk', 'Fiend', 'Wraith', 'Behemoth'];
 
@@ -53,6 +56,7 @@ export const SpawnerSystem: System = {
 
     runRef.timer += dt;
     runRef.spawnTimer -= dt;
+    eliteSpawnCooldown = Math.max(0, eliteSpawnCooldown - dt);
 
     // Update wave based on time
     const minutes = runRef.timer / 60;
@@ -81,11 +85,20 @@ export const SpawnerSystem: System = {
     const maxEnemies = Math.floor((150 + minutes * 10) * maxEnemiesMult);
     if (currentEnemyCount >= maxEnemies) return;
 
+    let eliteSpawnedThisBatch = false;
     for (let i = 0; i < batchSize && currentEnemyCount + i < maxEnemies; i++) {
       const type = pickEnemyType(minutes);
-      const isChampion = minutes >= 5 && Math.random() < 0.01;
-      const isElite = isChampion || shouldSpawnElite(minutes);
+      // At most one elite per spawn batch, and respect the cooldown timer
+      const canSpawnElite = !eliteSpawnedThisBatch && eliteSpawnCooldown <= 0;
+      const isChampion = canSpawnElite && minutes >= 5 && Math.random() < 0.01;
+      const isElite = isChampion || (canSpawnElite && shouldSpawnElite(minutes));
       const affixes = isElite ? pickAffixes(minutes) : [];
+
+      if (isElite) {
+        eliteSpawnedThisBatch = true;
+        // Cooldown scales down as game progresses: 15s at minute 2, down to 6s by minute 10+
+        eliteSpawnCooldown = Math.max(6, 15 - minutes);
+      }
 
       spawnEnemy(world, playerT.pos.x, playerT.pos.y, type, isElite, affixes, isChampion, hpMult);
     }
@@ -108,8 +121,9 @@ function pickEnemyType(minutes: number): EnemyType {
 }
 
 function shouldSpawnElite(minutes: number): boolean {
-  if (minutes < 3) return false;
-  const chance = Math.min(0.15, (minutes - 3) * 0.02);
+  // Gradual introduction: first elite possible at ~1.5 min, ramping slowly
+  if (minutes < 1.5) return false;
+  const chance = Math.min(0.12, (minutes - 1.5) * 0.01);
   return Math.random() < chance;
 }
 

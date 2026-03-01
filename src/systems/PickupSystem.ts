@@ -62,6 +62,13 @@ export const PickupSystem: System = {
           player.xp += pickup.value;
         } else if (pickup.type === 'health' && playerH) {
           playerH.current = Math.min(playerH.max, playerH.current + pickup.value);
+        } else if (pickup.type === 'magnet') {
+          // Attract all pickups on the map toward this player
+          for (const pe of world.query(PICKUP, TRANSFORM)) {
+            if (pe === entity) continue;
+            const otherPickup = world.getComponent<Pickup>(pe, PICKUP);
+            if (otherPickup) otherPickup.attracted = true;
+          }
         }
         world.destroyEntity(entity);
       }

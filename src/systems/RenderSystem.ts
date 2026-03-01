@@ -322,13 +322,12 @@ export function render(
     const ex = elitePositions[i].x;
     const ey = elitePositions[i].y;
 
-    const barW = 36;
-    const barH = 3;
-    // Stack from bottom to top: health bar -> name -> affixes
-    const barY2 = ey - renderable2.radius - 10;
+    const barW = 50;
+    const barH = 5;
+    const barY2 = ey - renderable2.radius - 14;
 
     // Health bar background
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
     ctx.fillRect(ex - barW / 2 - 1, barY2 - 1, barW + 2, barH + 2);
 
     // Health bar fill
@@ -340,23 +339,32 @@ export function render(
     ctx.textAlign = 'center';
     if (enemy2.eliteName) {
       ctx.fillStyle = '#ffd700';
-      ctx.font = 'bold 8px monospace';
-      ctx.fillText(enemy2.eliteName, ex, barY2 - 4);
+      ctx.font = 'bold 10px monospace';
+      ctx.fillText(enemy2.eliteName, ex, barY2 - 6);
     }
 
-    // Affix icons as single-char symbols below the health bar
+    // Affix tags below the health bar — readable short names with color coding
     if (enemy2.affixes.length > 0) {
-      ctx.globalAlpha = 0.7;
-      ctx.fillStyle = '#ccc';
-      ctx.font = '7px monospace';
-      const affixShort: Record<string, string> = {
-        fast: 'F', tough: 'T', splitting: 'S',
-        vampiric: 'V', teleporter: 'X', shielded: 'D',
-        explosive: 'E', chilling: 'C',
+      const affixColors: Record<string, string> = {
+        fast: '#ffaa00', tough: '#88aaff', splitting: '#ff66ff',
+        vampiric: '#44ff44', teleporter: '#cc66ff', shielded: '#00ddff',
+        explosive: '#ff4400', chilling: '#88eeff',
       };
-      const affixText = enemy2.affixes.map(a => affixShort[a] || '?').join('');
-      ctx.fillText(affixText, ex, barY2 + barH + 9);
-      ctx.globalAlpha = 1;
+      const affixLabels: Record<string, string> = {
+        fast: 'Fast', tough: 'Tough', splitting: 'Split',
+        vampiric: 'Vamp', teleporter: 'Tele', shielded: 'Shield',
+        explosive: 'Boom', chilling: 'Chill',
+      };
+      ctx.font = 'bold 8px monospace';
+      const totalWidth = enemy2.affixes.reduce((sum, a) => sum + ctx.measureText(affixLabels[a] || a).width + 6, -6);
+      let ax = ex - totalWidth / 2;
+      for (const affix of enemy2.affixes) {
+        const label = affixLabels[affix] || affix;
+        ctx.fillStyle = affixColors[affix] || '#ccc';
+        ctx.textAlign = 'left';
+        ctx.fillText(label, ax, barY2 + barH + 10);
+        ax += ctx.measureText(label).width + 6;
+      }
     }
   }
 
