@@ -90,15 +90,18 @@ export const SpawnerSystem: System = {
     const hpMult = 1 + (playerCount - 1) * 0.5;
     const batchMult = 1 + (playerCount - 1) * 0.25;
 
-    // Spawn rate: slow ramp early, accelerates mid-game, floors at 0.25s
-    const baseRate = Math.max(0.25, 0.8 * Math.pow(0.92, minutes));
+    // Spawn rate: gentle early, accelerates mid-game, floors at 0.25s
+    // 0min: 1.4s, 1min: 1.1s, 3min: 0.72s, 5min: 0.55s, 10min: 0.35s
+    const baseRate = Math.max(0.25, 1.4 * Math.pow(0.88, minutes));
     runRef.spawnTimer = baseRate / spawnRateMult;
 
-    // Batch size: gentle start, ramps up exponentially
-    const batchSize = Math.floor(Math.max(2, 2 * Math.pow(1.08, minutes)) * batchMult);
+    // Batch size: starts at 1, ramps up over time
+    // 0min: 1, 1min: 1, 2min: 2, 5min: 2, 8min: 3, 12min: 5
+    const batchSize = Math.floor(Math.max(1, 1.2 * Math.pow(1.12, minutes)) * batchMult);
     const currentEnemyCount = world.query(ENEMY).length;
-    // Enemy cap: logarithmic early growth, then steady climb
-    const maxEnemies = Math.floor((200 + 80 * Math.pow(minutes, 0.8)) * maxEnemiesMult);
+    // Enemy cap: lower early, then steady climb
+    // 0min: 80, 1min: 160, 3min: 274, 5min: 377, 10min: 584
+    const maxEnemies = Math.floor((80 + 80 * Math.pow(minutes, 0.8)) * maxEnemiesMult);
     if (currentEnemyCount >= maxEnemies) return;
 
     let eliteSpawnedThisBatch = false;
