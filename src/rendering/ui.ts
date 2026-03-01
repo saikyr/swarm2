@@ -14,6 +14,7 @@ export interface UpgradeCard {
   description: string;
   rarity: Rarity;
   type?: 'stat' | 'weapon_levelup' | 'overclock';
+  weaponId?: string;
   weaponName?: string;
   overclockTier?: 'balanced' | 'unstable';
   apply: () => void;
@@ -228,6 +229,7 @@ export function drawUpgradeMenu(
   mouseX: number,
   mouseY: number,
   mouseClicked: boolean,
+  newWeaponUnlock?: string | null,
 ): number | null {
   const { ctx, width, height } = cc;
   ctx.save();
@@ -236,14 +238,25 @@ export function drawUpgradeMenu(
   ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
   ctx.fillRect(0, 0, width, height);
 
+  // Weapon unlock notification banner
+  if (newWeaponUnlock) {
+    ctx.fillStyle = '#44aaff';
+    ctx.font = 'bold 16px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(`NEW WEAPON UNLOCKED: ${newWeaponUnlock}`, width / 2, height / 2 - 190);
+    ctx.fillStyle = '#88ccff';
+    ctx.font = '11px monospace';
+    ctx.fillText('It will auto-fire when enemies are in range', width / 2, height / 2 - 172);
+  }
+
   // Title
   ctx.fillStyle = '#fff';
   ctx.font = 'bold 28px monospace';
   ctx.textAlign = 'center';
-  ctx.fillText('LEVEL UP!', width / 2, height / 2 - 160);
+  ctx.fillText('LEVEL UP!', width / 2, height / 2 - 150);
   ctx.font = '14px monospace';
   ctx.fillStyle = '#888';
-  ctx.fillText('Choose an upgrade (1/2/3 or click)', width / 2, height / 2 - 130);
+  ctx.fillText('Choose an upgrade (1/2/3 or click)', width / 2, height / 2 - 124);
 
   // Cards
   const cardW = 180;

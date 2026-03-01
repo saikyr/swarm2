@@ -73,6 +73,7 @@ export class Game {
   private mouseY = 0;
   private mouseClicked = false;
   private weaponSlotData: Weapon[] = [];
+  private newlyUnlockedWeapon: string | null = null; // weapon name to show as notification
 
   // Multi-player state
   localPlayerId = 0;
@@ -401,6 +402,7 @@ export class Game {
         const unlockLevel = WEAPON_UNLOCK_LEVELS[wo.slotIndex] ?? 999;
         if (weapon.locked && player.level >= unlockLevel) {
           weapon.locked = false;
+          this.newlyUnlockedWeapon = weapon.name;
         }
       }
     }
@@ -459,7 +461,7 @@ export class Game {
           playerId,
           cards: this.upgradeCards.map((c, i) => ({
             index: i, id: c.id, name: c.name, description: c.description,
-            rarity: c.rarity, cardType: c.type, weaponName: c.weaponName,
+            rarity: c.rarity, cardType: c.type, weaponId: c.weaponId, weaponName: c.weaponName,
             overclockTier: c.overclockTier,
           })),
         });
@@ -476,15 +478,16 @@ export class Game {
       const pd = this.playerData.get(this.upgradingPlayerId) ?? this.getLocalPlayerData();
       const weaponEnts = pd?.weaponEntities ?? [];
 
-      if (card.type === 'weapon_levelup') {
+      // Check if the specific weapon that was just leveled hit an overclock threshold
+      if (card.type === 'weapon_levelup' && card.weaponId) {
         for (const we of weaponEnts) {
           const w = this.world.getComponent<Weapon>(we, WEAPON);
-          if (w && [6, 12, 18].includes(w.level)) {
+          if (w && w.id === card.weaponId && [6, 12, 18].includes(w.level)) {
             const ocCards = generateOverclockCards(w);
             if (ocCards.length > 0) {
               this.upgradeCards = ocCards;
               this.selectedUpgrade = 0;
-              this.mouseClicked = false; // Clear stale clicks so overclock cards aren't auto-selected
+              this.mouseClicked = false;
               if (this.networkRole === 'host' && this.upgradingPlayerId !== this.localPlayerId && this.netHost) {
                 this.netHost.sendToPlayer(this.upgradingPlayerId, {
                   type: MessageType.UpgradeOptions, playerId: this.upgradingPlayerId,
@@ -497,6 +500,7 @@ export class Game {
               }
               return;
             }
+            break; // Only check the specific weapon
           }
         }
       }
@@ -744,7 +748,7 @@ export class Game {
     this.upgradeCards = msg.cards.map(c => ({
       id: c.id, name: c.name, description: c.description,
       rarity: c.rarity as any, type: c.cardType as any,
-      weaponName: c.weaponName, overclockTier: c.overclockTier as any,
+      weaponId: c.weaponId, weaponName: c.weaponName, overclockTier: c.overclockTier as any,
       apply: () => {},
     }));
     this.selectedUpgrade = 0;
@@ -857,6 +861,9 @@ export class Game {
             this.world.update(TICK_DT);
             this.accumulator -= TICK_DT;
             steps++;
+            // Stop ticking if a level-up (or other event) changed the state away from Playing.
+            // Remaining accumulator is preserved so no time is lost.
+            if (this.stateMgr.current !== GameState.Playing) break;
           }
         }
 
@@ -1009,8 +1016,9 @@ export class Game {
 
       if (state === GameState.Upgrading) {
         if (this.upgradingPlayerId === this.localPlayerId || this.networkRole === 'solo') {
-          const clicked = drawUpgradeMenu(this.cc, this.upgradeCards, this.selectedUpgrade, this.mouseX, this.mouseY, this.mouseClicked);
+          const clicked = drawUpgradeMenu(this.cc, this.upgradeCards, this.selectedUpgrade, this.mouseX, this.mouseY, this.mouseClicked, this.newlyUnlockedWeapon);
           if (clicked !== null) {
+            this.newlyUnlockedWeapon = null;
             this.pickUpgrade(clicked);
           }
         } else {

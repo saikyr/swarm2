@@ -136,11 +136,20 @@ export function generateUpgradeCards(world: World, count = 3, playerEntity?: num
   const usedIds = new Set<string>();
   const playerWeapons = getPlayerWeapons(world, playerEntity);
 
+  // DRG:S-inspired pacing: weapon levelup chance scales with player level.
+  // Early game (levels 1-3) favors stat cards so you build a foundation.
+  // Mid/late game ramps weapon cards as you unlock more weapons.
+  let playerLevel = 1;
+  if (playerEntity !== undefined) {
+    const p = world.getComponent<Player>(playerEntity, PLAYER);
+    if (p) playerLevel = p.level;
+  }
+  const weaponChance = Math.min(0.55, 0.2 + playerLevel * 0.025);
+
   for (let i = 0; i < count; i++) {
     const roll = Math.random();
 
-    // 45% weapon levelup
-    if (roll < 0.45 && playerWeapons.length > 0) {
+    if (roll < weaponChance && playerWeapons.length > 0) {
       const weapon = playerWeapons[Math.floor(Math.random() * playerWeapons.length)];
       const cardId = `levelup_${weapon.id}_${weapon.level}`;
       if (!usedIds.has(cardId)) {
@@ -154,6 +163,7 @@ export function generateUpgradeCards(world: World, count = 3, playerEntity?: num
           description: buildWeaponLevelupDesc(wRef, def, nextLevel),
           rarity: nextLevel >= 10 ? 'rare' : nextLevel >= 5 ? 'magic' : 'common',
           type: 'weapon_levelup',
+          weaponId: wRef.id,
           weaponName: wRef.name,
           apply: () => {
             wRef.level = nextLevel;
