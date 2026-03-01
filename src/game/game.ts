@@ -239,6 +239,22 @@ export class Game {
         this.disconnectNetwork();
         changeState(this.stateMgr, GameState.Menu);
       }
+    } else if (state === GameState.Upgrading) {
+      // Tap-to-select upgrade cards (same layout as drawUpgradeMenu)
+      if (this.upgradeInputDelay > 0) return;
+      const cardW = 180, cardH = 200, gap = 20;
+      const totalW = this.upgradeCards.length * cardW + (this.upgradeCards.length - 1) * gap;
+      const startX = (width - totalW) / 2;
+      const cardY = height / 2 - 80;
+      if (this.mouseY >= cardY && this.mouseY <= cardY + cardH) {
+        for (let i = 0; i < this.upgradeCards.length; i++) {
+          const cx = startX + i * (cardW + gap);
+          if (this.mouseX >= cx && this.mouseX <= cx + cardW) {
+            this.pickUpgrade(i);
+            break;
+          }
+        }
+      }
     } else if (state === GameState.Paused) {
       changeState(this.stateMgr, GameState.Playing);
     } else if (state === GameState.GameOver) {
@@ -1111,10 +1127,7 @@ export class Game {
             this.upgradeInputDelay--;
             this.mouseClicked = false;
           }
-          const clicked = drawUpgradeMenu(this.cc, this.upgradeCards, this.selectedUpgrade, this.mouseX, this.mouseY, this.mouseClicked);
-          if (clicked !== null) {
-            this.pickUpgrade(clicked);
-          }
+          drawUpgradeMenu(this.cc, this.upgradeCards, this.selectedUpgrade);
         } else {
           this.drawWaitingForUpgrade();
         }

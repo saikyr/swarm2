@@ -248,10 +248,7 @@ export function drawUpgradeMenu(
   cc: CanvasContext,
   cards: UpgradeCard[],
   selectedIndex: number,
-  mouseX: number,
-  mouseY: number,
-  mouseClicked: boolean,
-): number | null {
+): void {
   const { ctx, width, height } = cc;
   ctx.save();
 
@@ -268,8 +265,8 @@ export function drawUpgradeMenu(
   ctx.font = '14px monospace';
   ctx.fillStyle = '#888';
   const hint = isWeaponUnlock
-    ? (isTouchDevice ? 'Tap a weapon to unlock' : 'Choose a weapon to unlock (1/2/3 or click)')
-    : (isTouchDevice ? 'Tap an upgrade to select' : 'Choose an upgrade (1/2/3 or click)');
+    ? (isTouchDevice ? 'Tap a weapon to unlock' : 'Choose a weapon to unlock (1/2/3 or arrows + enter)')
+    : (isTouchDevice ? 'Tap an upgrade to select' : 'Choose an upgrade (1/2/3 or arrows + enter)');
   ctx.fillText(hint, width / 2, height / 2 - 124);
 
   // Cards
@@ -280,23 +277,15 @@ export function drawUpgradeMenu(
   const startX = (width - totalW) / 2;
   const cardY = height / 2 - 80;
 
-  let clickedIndex: number | null = null;
-
   for (let i = 0; i < cards.length; i++) {
     const card = cards[i];
     const cx = startX + i * (cardW + gap);
     const isSelected = i === selectedIndex;
 
-    // Mouse hover detection
-    const isHovered = mouseX >= cx && mouseX <= cx + cardW && mouseY >= cardY && mouseY <= cardY + cardH;
-    if (isHovered && mouseClicked) {
-      clickedIndex = i;
-    }
-
     // Determine border color and style based on card type
     let borderColor = RARITY_COLORS[card.rarity];
-    let bgColor = isSelected || isHovered ? '#2a2a3a' : '#1a1a2a';
-    let borderWidth = isSelected || isHovered ? 3 : 1.5;
+    const bgColor = isSelected ? '#2a2a3a' : '#1a1a2a';
+    const borderWidth = isSelected ? 3 : 1.5;
 
     if (card.type === 'weapon_unlock') {
       borderColor = '#44aaff';
@@ -308,19 +297,12 @@ export function drawUpgradeMenu(
       borderColor = '#ff4400';
     }
 
-    // Scale up on hover
-    const scale = isHovered ? 1.05 : 1;
-    const drawW = cardW * scale;
-    const drawH = cardH * scale;
-    const drawX = cx - (drawW - cardW) / 2;
-    const drawY = cardY - (drawH - cardH) / 2;
-
     // Card bg
     ctx.fillStyle = bgColor;
     ctx.strokeStyle = borderColor;
     ctx.lineWidth = borderWidth;
     ctx.beginPath();
-    ctx.roundRect(drawX, drawY, drawW, drawH, 8);
+    ctx.roundRect(cx, cardY, cardW, cardH, 8);
     ctx.fill();
     ctx.stroke();
 
@@ -329,39 +311,39 @@ export function drawUpgradeMenu(
       ctx.fillStyle = '#44aaff';
       ctx.font = '12px monospace';
       ctx.textAlign = 'center';
-      ctx.fillText('UNLOCK', drawX + drawW / 2, drawY + 18);
+      ctx.fillText('UNLOCK', cx + cardW / 2, cardY + 18);
     } else if (card.type === 'weapon_levelup') {
       ctx.fillStyle = '#44aaff';
       ctx.font = '12px monospace';
       ctx.textAlign = 'center';
-      ctx.fillText('WEAPON', drawX + drawW / 2, drawY + 18);
+      ctx.fillText('WEAPON', cx + cardW / 2, cardY + 18);
     } else if (card.overclockTier === 'balanced') {
       ctx.fillStyle = '#ffd700';
       ctx.font = '12px monospace';
       ctx.textAlign = 'center';
-      ctx.fillText('OVERCLOCK', drawX + drawW / 2, drawY + 18);
+      ctx.fillText('OVERCLOCK', cx + cardW / 2, cardY + 18);
     } else if (card.overclockTier === 'unstable') {
       ctx.fillStyle = '#ff4400';
       ctx.font = '12px monospace';
       ctx.textAlign = 'center';
-      ctx.fillText('UNSTABLE', drawX + drawW / 2, drawY + 18);
+      ctx.fillText('UNSTABLE', cx + cardW / 2, cardY + 18);
     } else {
       // Rarity label
       ctx.fillStyle = RARITY_COLORS[card.rarity];
       ctx.font = '10px monospace';
       ctx.textAlign = 'center';
-      ctx.fillText(card.rarity.toUpperCase(), drawX + drawW / 2, drawY + 24);
+      ctx.fillText(card.rarity.toUpperCase(), cx + cardW / 2, cardY + 24);
     }
 
     // Name
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 14px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText(card.name, drawX + drawW / 2, drawY + 50);
+    ctx.fillText(card.name, cx + cardW / 2, cardY + 50);
 
     // Description (word wrap, supports newlines for multi-section descriptions)
     const descSections = card.description.split('\n');
-    let ly = drawY + 80;
+    let ly = cardY + 80;
     for (let s = 0; s < descSections.length; s++) {
       // Style: first section is flavor text, subsequent sections are stats
       if (s > 0) {
@@ -376,26 +358,25 @@ export function drawUpgradeMenu(
       let line = '';
       for (const word of words) {
         const test = line + word + ' ';
-        if (ctx.measureText(test).width > drawW - 20) {
-          ctx.fillText(line, drawX + drawW / 2, ly);
+        if (ctx.measureText(test).width > cardW - 20) {
+          ctx.fillText(line, cx + cardW / 2, ly);
           line = word + ' ';
           ly += 16;
         } else {
           line = test;
         }
       }
-      ctx.fillText(line, drawX + drawW / 2, ly);
+      ctx.fillText(line, cx + cardW / 2, ly);
       ly += 16;
     }
 
     // Keybind
     ctx.fillStyle = '#666';
     ctx.font = '12px monospace';
-    ctx.fillText(`[${i + 1}]`, drawX + drawW / 2, drawY + drawH - 16);
+    ctx.fillText(`[${i + 1}]`, cx + cardW / 2, cardY + cardH - 16);
   }
 
   ctx.restore();
-  return clickedIndex;
 }
 
 export function drawGameOver(cc: CanvasContext, run: RunContext, kills: number): void {
@@ -443,7 +424,7 @@ export function drawMenu(cc: CanvasContext): void {
   ctx.font = 'bold 48px monospace';
   ctx.shadowColor = '#00ffff';
   ctx.shadowBlur = 20;
-  ctx.fillText('SWARM2', width / 2, height / 2 - 60);
+  ctx.fillText('SWARM', width / 2, height / 2 - 60);
   ctx.shadowBlur = 0;
 
   ctx.fillStyle = '#888';

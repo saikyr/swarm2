@@ -1,7 +1,7 @@
 services:
   - type: web
     runtime: node
-    name: swarm2
+    name: swarm
     plan: free
     buildCommand: npm install && npm run build
     startCommand: npm start

@@ -1,4 +1,4 @@
-const STORAGE_KEY = 'swarm2_meta';
+const STORAGE_KEY = 'swarm_meta';
 
 export interface MetaProgression {
   currency: number;
