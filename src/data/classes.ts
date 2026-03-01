@@ -7,7 +7,7 @@ export interface ClassDef {
   color: string;
   glowColor: string;
   player: Omit<Player, 'playerId' | 'kills' | 'level' | 'xp' | 'xpToNext'>;
-  weapons: [string, string, string, string]; // 4 weapon def IDs
+  weapons: string[];
 }
 
 export const CLASS_DEFS: Record<ClassType, ClassDef> = {
@@ -30,7 +30,7 @@ export const CLASS_DEFS: Record<ClassType, ClassDef> = {
       speedMultiplier: 1,
       pickupRadiusMultiplier: 1,
     },
-    weapons: ['warrior_cleave', 'warrior_axes', 'warrior_banner', 'warrior_flail'],
+    weapons: ['warrior_cleave', 'warrior_axes', 'warrior_banner', 'warrior_flail', 'warrior_stomp', 'warrior_javelin', 'warrior_trap', 'warrior_spiral'],
   },
   [ClassType.Caster]: {
     classType: ClassType.Caster,
@@ -51,6 +51,6 @@ export const CLASS_DEFS: Record<ClassType, ClassDef> = {
       speedMultiplier: 1,
       pickupRadiusMultiplier: 1,
     },
-    weapons: ['caster_bolt', 'caster_chain', 'caster_frostorbs', 'caster_runes'],
+    weapons: ['caster_bolt', 'caster_chain', 'caster_frostorbs', 'caster_runes', 'caster_beam', 'caster_frostnova', 'caster_mines', 'caster_vortex'],
   },
 };

@@ -149,6 +149,226 @@ export const OVERCLOCK_DEFS: OverclockDef[] = [
     apply: (w) => { w.damage *= 2.5; w.cooldown *= 0.5; w.range *= 0.5; },
     runtimeTag: 'berserker_fury',
   },
+
+  // === NEW WARRIOR WEAPON OVERCLOCKS ===
+
+  // Earthquake Stomp
+  {
+    id: 'tremor',
+    name: 'Tremor',
+    description: '+30% range, +25% damage',
+    tier: 'balanced',
+    tags: ['warrior_stomp'],
+    apply: (w) => { w.range *= 1.3; w.damage *= 1.25; },
+  },
+  {
+    id: 'aftershock',
+    name: 'Aftershock',
+    description: '+2 shockwave count',
+    tier: 'balanced',
+    tags: ['warrior_stomp'],
+    apply: (w) => { w.count += 2; },
+  },
+  {
+    id: 'seismic_slam',
+    name: 'Seismic Slam',
+    description: '+200% damage, +80% range, 4x cooldown. Devastating quake.',
+    tier: 'unstable',
+    tags: ['warrior_stomp'],
+    apply: (w) => { w.damage *= 3; w.range *= 1.8; w.cooldown *= 4; },
+    runtimeTag: 'seismic_slam',
+  },
+
+  // Javelin Throw
+  {
+    id: 'long_shaft',
+    name: 'Long Shaft',
+    description: '+40% range, +25% speed',
+    tier: 'balanced',
+    tags: ['warrior_javelin'],
+    apply: (w) => { w.range *= 1.4; w.projectileSpeed *= 1.25; },
+  },
+  {
+    id: 'barbed_tips',
+    name: 'Barbed Tips',
+    description: '+3 piercing, +20% damage',
+    tier: 'balanced',
+    tags: ['warrior_javelin'],
+    apply: (w) => { w.piercing += 3; w.damage *= 1.2; },
+  },
+  {
+    id: 'impaler',
+    name: 'Impaler',
+    description: '+300% damage, piercing set to 1. One devastating strike.',
+    tier: 'unstable',
+    tags: ['warrior_javelin'],
+    apply: (w) => { w.damage *= 4; w.piercing = 1; },
+    runtimeTag: 'impaler',
+  },
+
+  // Spike Trap
+  {
+    id: 'wider_spikes',
+    name: 'Wider Spikes',
+    description: '+40% radius, +30% lifetime',
+    tier: 'balanced',
+    tags: ['warrior_trap'],
+    apply: (w) => { w.projectileRadius *= 1.4; w.projectileLifetime *= 1.3; },
+  },
+  {
+    id: 'poison_tips',
+    name: 'Poison Tips',
+    description: '+50% damage, +20% lifetime',
+    tier: 'balanced',
+    tags: ['warrior_trap'],
+    apply: (w) => { w.damage *= 1.5; w.projectileLifetime *= 1.2; },
+  },
+  {
+    id: 'minefield',
+    name: 'Minefield',
+    description: '+4 count, -50% radius, -40% cooldown. Spam tiny traps.',
+    tier: 'unstable',
+    tags: ['warrior_trap'],
+    apply: (w) => { w.count += 4; w.projectileRadius *= 0.5; w.cooldown *= 0.6; },
+    runtimeTag: 'minefield',
+  },
+
+  // Spiral Blades
+  {
+    id: 'tight_spiral',
+    name: 'Tight Spiral',
+    description: '-40% expand speed, +3 piercing, +30% lifetime',
+    tier: 'balanced',
+    tags: ['warrior_spiral'],
+    apply: (w) => { w.projectileSpeed *= 0.6; w.piercing += 3; w.projectileLifetime *= 1.3; },
+  },
+  {
+    id: 'blade_storm',
+    name: 'Blade Storm',
+    description: '+3 blades',
+    tier: 'balanced',
+    tags: ['warrior_spiral'],
+    apply: (w) => { w.count += 3; },
+  },
+  {
+    id: 'sawmill',
+    name: 'Sawmill',
+    description: '+200% damage, blades don\'t expand. Melee blender.',
+    tier: 'unstable',
+    tags: ['warrior_spiral'],
+    apply: (w) => { w.damage *= 3; w.projectileSpeed = 0; },
+    runtimeTag: 'sawmill',
+  },
+
+  // === NEW CASTER WEAPON OVERCLOCKS ===
+
+  // Siphon Beam
+  {
+    id: 'focused_lens',
+    name: 'Focused Lens',
+    description: '+60% damage, -30% range',
+    tier: 'balanced',
+    tags: ['caster_beam'],
+    apply: (w) => { w.damage *= 1.6; w.range *= 0.7; },
+  },
+  {
+    id: 'wide_beam',
+    name: 'Wide Beam',
+    description: '+1 target count',
+    tier: 'balanced',
+    tags: ['caster_beam'],
+    apply: (w) => { w.count += 1; },
+  },
+  {
+    id: 'death_ray',
+    name: 'Death Ray',
+    description: '+300% damage, -50% range, 2x cooldown. Devastating close beam.',
+    tier: 'unstable',
+    tags: ['caster_beam'],
+    apply: (w) => { w.damage *= 4; w.range *= 0.5; w.cooldown *= 2; },
+    runtimeTag: 'death_ray',
+  },
+
+  // Frost Nova
+  {
+    id: 'permafrost',
+    name: 'Permafrost',
+    description: '+30% range, +25% damage',
+    tier: 'balanced',
+    tags: ['caster_frostnova'],
+    apply: (w) => { w.range *= 1.3; w.damage *= 1.25; },
+  },
+  {
+    id: 'flash_freeze',
+    name: 'Flash Freeze',
+    description: '-40% cooldown, -25% range',
+    tier: 'balanced',
+    tags: ['caster_frostnova'],
+    apply: (w) => { w.cooldown *= 0.6; w.range *= 0.75; },
+  },
+  {
+    id: 'absolute_zero',
+    name: 'Absolute Zero',
+    description: '+200% damage, +60% range, 5x cooldown. Frozen apocalypse.',
+    tier: 'unstable',
+    tags: ['caster_frostnova'],
+    apply: (w) => { w.damage *= 3; w.range *= 1.6; w.cooldown *= 5; },
+    runtimeTag: 'absolute_zero',
+  },
+
+  // Arcane Mines
+  {
+    id: 'cluster_mines',
+    name: 'Cluster Mines',
+    description: '+3 count, -30% blast radius',
+    tier: 'balanced',
+    tags: ['caster_mines'],
+    apply: (w) => { w.count += 3; w.projectileRadius *= 0.7; },
+  },
+  {
+    id: 'heavy_ordnance',
+    name: 'Heavy Ordnance',
+    description: '+50% damage, +25% blast radius',
+    tier: 'balanced',
+    tags: ['caster_mines'],
+    apply: (w) => { w.damage *= 1.5; w.projectileRadius *= 1.25; },
+  },
+  {
+    id: 'carpet_bomber',
+    name: 'Carpet Bomber',
+    description: '+8 count, -30% cooldown. Explosions everywhere.',
+    tier: 'unstable',
+    tags: ['caster_mines'],
+    apply: (w) => { w.count += 8; w.cooldown *= 0.7; },
+    runtimeTag: 'carpet_bomber',
+  },
+
+  // Void Vortex
+  {
+    id: 'event_horizon',
+    name: 'Event Horizon',
+    description: '+50% lifetime, +20% radius',
+    tier: 'balanced',
+    tags: ['caster_vortex'],
+    apply: (w) => { w.projectileLifetime *= 1.5; w.projectileRadius *= 1.2; },
+  },
+  {
+    id: 'dark_matter',
+    name: 'Dark Matter',
+    description: '+40% damage, +2 piercing, -2 count',
+    tier: 'balanced',
+    tags: ['caster_vortex'],
+    apply: (w) => { w.damage *= 1.4; w.piercing += 2; w.count = Math.max(2, w.count - 2); },
+  },
+  {
+    id: 'singularity_vortex',
+    name: 'Singularity Vortex',
+    description: '+5 projectiles, blades don\'t expand. Dense death zone.',
+    tier: 'unstable',
+    tags: ['caster_vortex'],
+    apply: (w) => { w.count += 5; w.projectileSpeed = 0; },
+    runtimeTag: 'singularity_vortex',
+  },
 ];
 
 // Find applicable overclocks for a weapon

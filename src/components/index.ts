@@ -28,6 +28,7 @@ export const BOOMERANG = 'boomerang';
 export const GROUND_ZONE = 'groundZone';
 export const RUNE_CHARGE = 'runeCharge';
 export const REVIVE_ZONE = 'reviveZone';
+export const SPIRAL_PROJECTILE = 'spiralProjectile';
 
 // Targeting result
 export interface TargetResult {
@@ -278,4 +279,12 @@ export interface ReviveZone {
   progress: number;
   reviveTime: number;
   reviverInZone: boolean;
+}
+
+export interface SpiralProjectile {
+  owner: number;
+  angle: number;
+  angularSpeed: number;
+  radialSpeed: number;
+  currentRadius: number;
 }

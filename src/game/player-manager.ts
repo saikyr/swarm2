@@ -122,7 +122,7 @@ export function spawnPlayers(
       const we = world.createEntity();
       weaponEntities.push(we);
 
-      const locked = WEAPON_UNLOCK_LEVELS[i] > 1;
+      const locked = i > 0; // Only the first weapon (slot 0) starts unlocked
 
       world.addComponent<Weapon>(we, WEAPON, {
         id: def.id,

@@ -3,12 +3,12 @@ import type { World } from '../ecs/ecs';
 import {
   TRANSFORM, WEAPON, WEAPON_OWNER, PROJECTILE, VELOCITY, COLLIDER, RENDERABLE,
   LIFETIME, SWEEP_ATTACK, TRAIL, NOVA_ATTACK, ORBITAL, HEALTH, ENEMY, DAMAGE_FLASH,
-  BOOMERANG, GROUND_ZONE, RUNE_CHARGE, PLAYER,
+  BOOMERANG, GROUND_ZONE, RUNE_CHARGE, PLAYER, SPIRAL_PROJECTILE,
 } from '../components';
 import type {
   Transform, Weapon, WeaponOwner, Projectile, Velocity, Collider, Renderable,
   Lifetime, SweepAttack, Trail, NovaAttack, OrbitalProjectile, Health, Enemy,
-  BoomerangProjectile, GroundZone, RuneCharge,
+  BoomerangProjectile, GroundZone, RuneCharge, SpiralProjectile,
 } from '../components';
 import { CollisionLayer } from '../components';
 import { vec2Normalize, vec2Sub, vec2Angle, vec2DistSq } from '../utils/math';
@@ -86,6 +86,12 @@ export const WeaponSystem: System = {
           break;
         case AttackPattern.RunicBarrage:
           fireRunicBarrage(world, wo.owner, ownerTransform, weapon);
+          break;
+        case AttackPattern.Beam:
+          fireBeam(world, wo.owner, ownerTransform, weapon);
+          break;
+        case AttackPattern.Spiral:
+          fireSpiral(world, wo.owner, ownerTransform, weapon);
           break;
       }
     }
@@ -377,10 +383,15 @@ function fireBoomerang(world: World, owner: number, transform: Transform, weapon
 function fireGroundZone(world: World, owner: number, transform: Transform, weapon: Weapon): void {
   if (!weapon.target) return;
 
+  // Trap weapons place zone at player position instead of target
+  const isTrap = weapon.tags.includes('trap');
+  const px = isTrap ? transform.pos.x : weapon.target.x;
+  const py = isTrap ? transform.pos.y : weapon.target.y;
+
   const e = world.createEntity();
   world.addComponent<Transform>(e, TRANSFORM, {
-    pos: { x: weapon.target.x, y: weapon.target.y },
-    prevPos: { x: weapon.target.x, y: weapon.target.y },
+    pos: { x: px, y: py },
+    prevPos: { x: px, y: py },
     rotation: 0,
   });
   world.addComponent<GroundZone>(e, GROUND_ZONE, {
@@ -479,6 +490,99 @@ function fireOrbital(world: World, owner: number, transform: Transform, weapon: 
       positions: [],
       maxLength: 10,
       width: weapon.projectileRadius * 0.5,
+      color: weapon.projectileColor,
+    });
+  }
+}
+
+function fireBeam(world: World, owner: number, transform: Transform, weapon: Weapon): void {
+  if (!weapon.target) return;
+
+  const enemies = world.query(ENEMY, TRANSFORM, HEALTH);
+  const rangeSq = weapon.range * weapon.range;
+
+  // Get player damage multiplier
+  let dmgMult = 1;
+  const ownerPlayer = world.getComponent<any>(owner, PLAYER);
+  if (ownerPlayer) dmgMult = ownerPlayer.damageMultiplier;
+
+  // Find up to count targets (closest first)
+  const targets: { entity: number; pos: { x: number; y: number }; distSq: number }[] = [];
+  for (const enemy of enemies) {
+    const et = world.getComponent<Transform>(enemy, TRANSFORM)!;
+    const dSq = vec2DistSq(transform.pos, et.pos);
+    if (dSq <= rangeSq) {
+      targets.push({ entity: enemy, pos: { x: et.pos.x, y: et.pos.y }, distSq: dSq });
+    }
+  }
+  targets.sort((a, b) => a.distSq - b.distSq);
+  const hitCount = Math.min(weapon.count, targets.length);
+
+  for (let i = 0; i < hitCount; i++) {
+    const t = targets[i];
+    const health = world.getComponent<Health>(t.entity, HEALTH);
+    if (health) {
+      const dmg = weapon.damage * dmgMult;
+      health.current -= dmg;
+      world.addComponent(t.entity, DAMAGE_FLASH, { timer: 0.08, duration: 0.08 });
+      const tc = world.getComponent<Collider>(t.entity, COLLIDER);
+      spawnDamageNumber(world, t.pos.x, t.pos.y - (tc?.radius ?? 10), dmg);
+    }
+    spawnBeamFx(transform.pos.x, transform.pos.y, t.pos.x, t.pos.y, 0.12);
+    pendingGameEvents.push({ type: 'beam', x0: transform.pos.x, y0: transform.pos.y, x1: t.pos.x, y1: t.pos.y });
+  }
+}
+
+function fireSpiral(world: World, owner: number, transform: Transform, weapon: Weapon): void {
+  const count = weapon.count || 4;
+  const angleStep = (Math.PI * 2) / count;
+  const shape = getProjectileShape(weapon);
+
+  for (let i = 0; i < count; i++) {
+    const angle = angleStep * i;
+    const startRadius = 15;
+    const ox = transform.pos.x + Math.cos(angle) * startRadius;
+    const oy = transform.pos.y + Math.sin(angle) * startRadius;
+
+    const e = world.createEntity();
+    world.addComponent<Transform>(e, TRANSFORM, {
+      pos: { x: ox, y: oy },
+      prevPos: { x: ox, y: oy },
+      rotation: angle,
+    });
+    world.addComponent<SpiralProjectile>(e, SPIRAL_PROJECTILE, {
+      owner,
+      angle,
+      angularSpeed: 4.0,
+      radialSpeed: weapon.projectileSpeed,
+      currentRadius: startRadius,
+    });
+    world.addComponent<Projectile>(e, PROJECTILE, {
+      damage: weapon.damage,
+      owner,
+      piercing: weapon.piercing,
+      hitEntities: new Set(),
+    });
+    world.addComponent<Collider>(e, COLLIDER, {
+      radius: weapon.projectileRadius,
+      layer: CollisionLayer.PlayerProjectile,
+      mask: [CollisionLayer.Enemy],
+    });
+    world.addComponent<Renderable>(e, RENDERABLE, {
+      shape,
+      radius: weapon.projectileRadius,
+      color: weapon.projectileColor,
+      glowColor: weapon.projectileColor,
+      glowSize: 10,
+      alpha: 0.9,
+      zIndex: 3,
+      rotationSpeed: 10,
+    });
+    world.addComponent<Lifetime>(e, LIFETIME, { remaining: weapon.projectileLifetime });
+    world.addComponent<Trail>(e, TRAIL, {
+      positions: [],
+      maxLength: 8,
+      width: weapon.projectileRadius * 0.7,
       color: weapon.projectileColor,
     });
   }

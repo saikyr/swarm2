@@ -1,7 +1,7 @@
 import type { System } from '../ecs/system';
 import type { World } from '../ecs/ecs';
-import { DAMAGE_FLASH, TRAIL, TRANSFORM, DAMAGE_NUMBER, SWEEP_ATTACK, NOVA_ATTACK, BOOMERANG, VELOCITY, RUNE_CHARGE, RENDERABLE, LIFETIME } from '../components';
-import type { DamageFlash, Trail, Transform, DamageNumberData, NovaAttack, BoomerangProjectile, Velocity, RuneCharge, Renderable, Lifetime, NovaAttack as NovaAttackType } from '../components';
+import { DAMAGE_FLASH, TRAIL, TRANSFORM, DAMAGE_NUMBER, SWEEP_ATTACK, NOVA_ATTACK, BOOMERANG, VELOCITY, RUNE_CHARGE, RENDERABLE, LIFETIME, SPIRAL_PROJECTILE } from '../components';
+import type { DamageFlash, Trail, Transform, DamageNumberData, NovaAttack, BoomerangProjectile, Velocity, RuneCharge, Renderable, Lifetime, SpiralProjectile } from '../components';
 import { DAMAGE_NUMBER_RISE_SPEED } from '../constants';
 import { vec2DistSq, vec2Normalize, vec2Sub } from '../utils/math';
 
@@ -80,6 +80,25 @@ export const CleanupSystem: System = {
           // Owner gone, destroy
           world.destroyEntity(entity);
         }
+      }
+    }
+
+    // Update spiral projectiles — expand outward while rotating around owner
+    for (const entity of world.query(SPIRAL_PROJECTILE, TRANSFORM)) {
+      const spiral = world.getComponent<SpiralProjectile>(entity, SPIRAL_PROJECTILE)!;
+      const transform = world.getComponent<Transform>(entity, TRANSFORM)!;
+
+      spiral.angle += spiral.angularSpeed * dt;
+      spiral.currentRadius += spiral.radialSpeed * dt;
+
+      const ownerT = world.getComponent<Transform>(spiral.owner, TRANSFORM);
+      if (ownerT) {
+        transform.prevPos.x = transform.pos.x;
+        transform.prevPos.y = transform.pos.y;
+        transform.pos.x = ownerT.pos.x + Math.cos(spiral.angle) * spiral.currentRadius;
+        transform.pos.y = ownerT.pos.y + Math.sin(spiral.angle) * spiral.currentRadius;
+      } else {
+        world.destroyEntity(entity);
       }
     }
 

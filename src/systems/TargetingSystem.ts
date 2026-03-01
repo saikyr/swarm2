@@ -1,7 +1,7 @@
 import type { System } from '../ecs/system';
 import type { World } from '../ecs/ecs';
-import { TRANSFORM, WEAPON, WEAPON_OWNER, ENEMY } from '../components';
-import type { Transform, Weapon, WeaponOwner } from '../components';
+import { TRANSFORM, WEAPON, WEAPON_OWNER, ENEMY, VELOCITY } from '../components';
+import type { Transform, Weapon, WeaponOwner, Velocity } from '../components';
 import { vec2DistSq } from '../utils/math';
 import { TargetingType } from '../constants';
 
@@ -39,6 +39,44 @@ export const TargetingSystem: System = {
 
       const rangeSq = weapon.range * weapon.range;
       weapon.target = null;
+
+      if (weapon.targeting === TargetingType.Directional) {
+        // Fire in movement direction; find a target point along velocity vector
+        const vel = world.getComponent<Velocity>(wo.owner, VELOCITY);
+        let dx = 0, dy = -1; // default: up
+        if (vel && (vel.x !== 0 || vel.y !== 0)) {
+          const len = Math.sqrt(vel.x * vel.x + vel.y * vel.y);
+          dx = vel.x / len;
+          dy = vel.y / len;
+        } else {
+          // Fallback: aim at closest enemy
+          let closestDistSq = Infinity;
+          for (const enemy of enemies) {
+            const et = world.getComponent<Transform>(enemy, TRANSFORM)!;
+            const dSq = vec2DistSq(ownerTransform.pos, et.pos);
+            if (dSq < closestDistSq && dSq <= rangeSq) {
+              closestDistSq = dSq;
+              const ex = et.pos.x - ownerTransform.pos.x;
+              const ey = et.pos.y - ownerTransform.pos.y;
+              const len = Math.sqrt(dSq);
+              dx = ex / len;
+              dy = ey / len;
+              weapon.target = { entity: enemy, x: et.pos.x, y: et.pos.y, distSq: dSq };
+            }
+          }
+          if (!weapon.target) continue;
+        }
+        // Set target as a point along the direction at weapon range
+        if (!weapon.target) {
+          weapon.target = {
+            entity: -1,
+            x: ownerTransform.pos.x + dx * weapon.range,
+            y: ownerTransform.pos.y + dy * weapon.range,
+            distSq: 0,
+          };
+        }
+        continue;
+      }
 
       if (weapon.targeting === TargetingType.Closest || weapon.targeting === TargetingType.Aoe) {
         let closestDistSq = Infinity;

@@ -98,6 +98,7 @@ export enum AttackPattern {
   Boomerang = 'boomerang',
   GroundZone = 'ground_zone',
   RunicBarrage = 'runic_barrage',
+  Spiral = 'spiral',
 }
 
 // Elite affixes

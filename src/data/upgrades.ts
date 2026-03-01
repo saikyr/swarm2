@@ -231,7 +231,11 @@ export function generateWeaponUnlockCards(world: World, playerEntity: number): U
     }
   }
 
-  return lockedWeapons.map(({ weapon, def }) => ({
+  // Shuffle and pick up to 3 choices
+  const shuffled = [...lockedWeapons].sort(() => Math.random() - 0.5);
+  const choices = shuffled.slice(0, 3);
+
+  return choices.map(({ weapon, def }) => ({
     id: `unlock_${weapon.id}`,
     name: def.name,
     description: `${def.description}\n${buildWeaponUnlockDesc(def)}`,

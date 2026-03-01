@@ -8,7 +8,7 @@ import { TICK_DT, MAX_FRAME_SKIP, GameState, ClassType, WORLD_WIDTH, WORLD_HEIGH
 import {
   TRANSFORM, VELOCITY, HEALTH, COLLIDER, RENDERABLE, PLAYER, ENEMY, WEAPON,
   WEAPON_OWNER, PROJECTILE, PARTICLE, INPUT, DAMAGE_FLASH, TRAIL, LIFETIME, PICKUP,
-  DAMAGE_NUMBER, SWEEP_ATTACK, NOVA_ATTACK, ORBITAL, BEAM_ATTACK, BOOMERANG, GROUND_ZONE, RUNE_CHARGE, REVIVE_ZONE,
+  DAMAGE_NUMBER, SWEEP_ATTACK, NOVA_ATTACK, ORBITAL, BEAM_ATTACK, BOOMERANG, GROUND_ZONE, RUNE_CHARGE, REVIVE_ZONE, SPIRAL_PROJECTILE,
   type Transform, type Health, type Player, type Weapon, type WeaponOwner,
 } from '../components';
 import { generateUpgradeCards, generateOverclockCards, generateWeaponUnlockCards } from '../data/upgrades';
@@ -147,6 +147,7 @@ export class Game {
     this.world.registerComponent(GROUND_ZONE);
     this.world.registerComponent(RUNE_CHARGE);
     this.world.registerComponent(REVIVE_ZONE);
+    this.world.registerComponent(SPIRAL_PROJECTILE);
   }
 
   private registerSystems(): void {
@@ -458,17 +459,21 @@ export class Game {
     }
     if (!pd) return false;
 
+    // Count how many weapons are currently unlocked
+    let unlockedCount = 0;
+    let hasLocked = false;
     for (const we of pd.weaponEntities) {
       const weapon = this.world.getComponent<Weapon>(we, WEAPON);
-      const wo = this.world.getComponent<WeaponOwner>(we, WEAPON_OWNER);
-      if (!weapon || !wo) continue;
-
-      const unlockLevel = WEAPON_UNLOCK_LEVELS[wo.slotIndex] ?? 999;
-      if (weapon.locked && player.level >= unlockLevel) {
-        return true;
-      }
+      if (!weapon) continue;
+      if (!weapon.locked) unlockedCount++;
+      else hasLocked = true;
     }
-    return false;
+
+    if (!hasLocked) return false;
+
+    // Check if next unlock slot is available at current level
+    const nextUnlockLevel = WEAPON_UNLOCK_LEVELS[unlockedCount] ?? 999;
+    return player.level >= nextUnlockLevel;
   }
 
   private onLevelUp(playerEntity: number): void {
@@ -1149,7 +1154,7 @@ export class Game {
         this.weaponSlotData.length = 0;
         for (const we of localData.weaponEntities) {
           const w = this.world.getComponent<Weapon>(we, WEAPON);
-          if (w) this.weaponSlotData.push(w);
+          if (w && !w.locked) this.weaponSlotData.push(w);
         }
 
         drawHUD(this.cc, player, health, this.run, {
@@ -1172,7 +1177,7 @@ export class Game {
           const wo = this.world.getComponent<WeaponOwner>(we, WEAPON_OWNER);
           if (wo && wo.owner === pe) {
             const w = this.world.getComponent<Weapon>(we, WEAPON);
-            if (w) this.weaponSlotData.push(w);
+            if (w && !w.locked) this.weaponSlotData.push(w);
           }
         }
 
