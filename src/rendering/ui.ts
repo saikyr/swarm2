@@ -193,6 +193,7 @@ function drawWeaponSlots(ctx: CanvasRenderingContext2D, slots: Weapon[], screenW
 
   for (let i = 0; i < slots.length; i++) {
     const slot = slots[i];
+    if (!slot) continue;
     const y = startY + i * (slotH + gap);
 
     // Background

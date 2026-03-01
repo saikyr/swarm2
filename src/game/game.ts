@@ -1183,10 +1183,15 @@ export class Game {
       const playerT = this.world.getComponent<Transform>(localData.entity, TRANSFORM);
 
       if (player && health && playerT) {
-        this.weaponSlotData.length = 0;
-        for (let i = 0; i < Math.min(localData.weaponEntities.length, WEAPON_UNLOCK_LEVELS.length); i++) {
-          const w = this.world.getComponent<Weapon>(localData.weaponEntities[i], WEAPON);
-          if (w) this.weaponSlotData.push(w);
+        this.weaponSlotData.length = WEAPON_UNLOCK_LEVELS.length;
+        for (let i = 0; i < WEAPON_UNLOCK_LEVELS.length; i++) this.weaponSlotData[i] = undefined as any;
+        for (let i = 0; i < localData.weaponEntities.length; i++) {
+          const we = localData.weaponEntities[i];
+          const wo = this.world.getComponent<WeaponOwner>(we, WEAPON_OWNER);
+          const w = this.world.getComponent<Weapon>(we, WEAPON);
+          if (wo && w && wo.slotIndex < WEAPON_UNLOCK_LEVELS.length) {
+            this.weaponSlotData[wo.slotIndex] = w;
+          }
         }
 
         drawHUD(this.cc, player, health, this.run, {
@@ -1203,13 +1208,14 @@ export class Game {
       if (p.playerId === this.localPlayerId) {
         const health = this.world.getComponent<Health>(pe, HEALTH)!;
 
-        // Find weapon slots for this player (cap at 4 visible slots)
-        this.weaponSlotData.length = 0;
+        // Find weapon slots for this player, sorted by slotIndex
+        this.weaponSlotData.length = WEAPON_UNLOCK_LEVELS.length;
+        for (let i = 0; i < WEAPON_UNLOCK_LEVELS.length; i++) this.weaponSlotData[i] = undefined as any;
         for (const we of this.world.query(WEAPON, WEAPON_OWNER)) {
           const wo = this.world.getComponent<WeaponOwner>(we, WEAPON_OWNER);
           if (wo && wo.owner === pe && wo.slotIndex < WEAPON_UNLOCK_LEVELS.length) {
             const w = this.world.getComponent<Weapon>(we, WEAPON);
-            if (w) this.weaponSlotData.push(w);
+            if (w) this.weaponSlotData[wo.slotIndex] = w;
           }
         }
 
