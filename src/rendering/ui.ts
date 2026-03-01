@@ -104,62 +104,67 @@ export function drawHUD(
 }
 
 function drawWeaponSlots(ctx: CanvasRenderingContext2D, slots: Weapon[], screenH: number): void {
-  const slotSize = 44;
-  const gap = 6;
+  const slotW = 150;
+  const slotH = 32;
+  const gap = 4;
   const startX = 16;
-  const startY = screenH - (slots.length * (slotSize + gap)) - 10;
+  const startY = screenH - (slots.length * (slotH + gap)) - 10;
 
   for (let i = 0; i < slots.length; i++) {
     const slot = slots[i];
-    const y = startY + i * (slotSize + gap);
+    const y = startY + i * (slotH + gap);
 
     // Background
     ctx.fillStyle = slot.locked ? '#111' : '#1a1a2e';
     ctx.strokeStyle = slot.locked ? '#333' : '#555';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.roundRect(startX, y, slotSize, slotSize, 4);
+    ctx.roundRect(startX, y, slotW, slotH, 4);
     ctx.fill();
     ctx.stroke();
 
     if (slot.locked) {
-      // Lock icon
       ctx.fillStyle = '#444';
-      ctx.font = '16px monospace';
+      ctx.font = '11px monospace';
       ctx.textAlign = 'center';
-      ctx.fillText('?', startX + slotSize / 2, y + slotSize / 2 + 5);
+      ctx.fillText('? Locked', startX + slotW / 2, y + slotH / 2 + 4);
       continue;
     }
 
-    // Weapon abbreviation
-    const abbr = slot.name.split(' ').map(w => w[0]).join('').toUpperCase();
-    ctx.fillStyle = '#ddd';
+    // Cooldown bar overlay
+    const cdPct = slot.cooldown > 0 ? Math.max(0, slot.cooldownTimer / slot.cooldown) : 0;
+    if (cdPct > 0) {
+      ctx.save();
+      ctx.globalAlpha = 0.3;
+      ctx.fillStyle = '#000';
+      ctx.beginPath();
+      ctx.roundRect(startX, y, slotW * cdPct, slotH, 4);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Weapon color indicator bar
+    ctx.fillStyle = slot.projectileColor;
+    ctx.fillRect(startX + 4, y + 6, 3, slotH - 12);
+
+    // Weapon name
+    ctx.fillStyle = cdPct > 0 ? '#888' : '#ddd';
     ctx.font = 'bold 11px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText(abbr, startX + slotSize / 2, y + 16);
+    ctx.textAlign = 'left';
+    ctx.fillText(slot.name, startX + 12, y + 13);
 
     // Level
     ctx.fillStyle = '#888';
     ctx.font = '9px monospace';
-    ctx.fillText(`Lv${slot.level}`, startX + slotSize / 2, y + 28);
+    ctx.textAlign = 'left';
+    ctx.fillText(`Lv.${slot.level}`, startX + 12, y + 25);
 
-    // Cooldown arc
-    const cdPct = slot.cooldown > 0 ? Math.max(0, slot.cooldownTimer / slot.cooldown) : 0;
-    if (cdPct > 0) {
-      ctx.save();
-      ctx.globalAlpha = 0.4;
-      ctx.fillStyle = '#000';
-      ctx.beginPath();
-      ctx.moveTo(startX + slotSize / 2, y + slotSize / 2);
-      ctx.arc(
-        startX + slotSize / 2, y + slotSize / 2,
-        slotSize / 2 - 2,
-        -Math.PI / 2,
-        -Math.PI / 2 + Math.PI * 2 * cdPct,
-      );
-      ctx.closePath();
-      ctx.fill();
-      ctx.restore();
+    // Overclocks indicator
+    if (slot.overclocks.length > 0) {
+      ctx.fillStyle = '#ffd700';
+      ctx.font = '9px monospace';
+      ctx.textAlign = 'right';
+      ctx.fillText(`OC×${slot.overclocks.length}`, startX + slotW - 6, y + 25);
     }
   }
 }

@@ -417,6 +417,7 @@ export class Game {
       this.upgradeCards = generateUpgradeCards(this.world, 3, playerEntity);
       this.selectedUpgrade = 0;
       this.upgradingPlayerId = player.playerId;
+      this.mouseClicked = false; // Clear stale clicks to prevent auto-selecting an upgrade
       changeState(this.stateMgr, GameState.Upgrading);
     } else if (this.networkRole === 'host') {
       this.upgradeQueue.push(player.playerId);
@@ -447,6 +448,7 @@ export class Game {
     this.selectedUpgrade = 0;
 
     if (playerId === this.localPlayerId) {
+      this.mouseClicked = false; // Clear stale clicks to prevent auto-selecting an upgrade
       changeState(this.stateMgr, GameState.Upgrading);
     } else {
       changeState(this.stateMgr, GameState.Upgrading);
@@ -482,6 +484,7 @@ export class Game {
             if (ocCards.length > 0) {
               this.upgradeCards = ocCards;
               this.selectedUpgrade = 0;
+              this.mouseClicked = false; // Clear stale clicks so overclock cards aren't auto-selected
               if (this.networkRole === 'host' && this.upgradingPlayerId !== this.localPlayerId && this.netHost) {
                 this.netHost.sendToPlayer(this.upgradingPlayerId, {
                   type: MessageType.UpgradeOptions, playerId: this.upgradingPlayerId,
@@ -746,6 +749,7 @@ export class Game {
     }));
     this.selectedUpgrade = 0;
     this.upgradingPlayerId = this.localPlayerId;
+    this.mouseClicked = false; // Clear stale clicks to prevent auto-selecting an upgrade
     changeState(this.stateMgr, GameState.Upgrading);
   }
 
