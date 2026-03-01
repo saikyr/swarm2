@@ -4,7 +4,7 @@ import { HEALTH, ENEMY, PLAYER, TRANSFORM, COLLIDER, RENDERABLE, PICKUP, VELOCIT
 import type { Health, Enemy, Player, Transform, Collider, Renderable, NovaAttack, Lifetime, ReviveZone } from '../components';
 import { emitParticles } from '../rendering/particles';
 import { addScreenShake, triggerHitPause, type ScreenShake, type HitPause } from '../rendering/effects';
-import { PARTICLE_DEATH_COUNT_MIN, PARTICLE_DEATH_COUNT_MAX, HIT_PAUSE_DURATION, EliteAffix, EnemyType } from '../constants';
+import { PARTICLE_DEATH_COUNT_MIN, PARTICLE_DEATH_COUNT_MAX, HIT_PAUSE_DURATION, EliteAffix, EnemyType, EnemyAIState } from '../constants';
 
 export let screenShakeRef: ScreenShake | null = null;
 export let hitPauseRef: HitPause | null = null;
@@ -51,12 +51,26 @@ export const HealthSystem: System = {
             radius: 0, maxRadius: 100, damage: enemy.damage * 2,
             timer: 0, duration: 0.3, owner: entity,
             hitEntities: new Set(), color: '#ff4400',
+            isEnemyOwned: true,
           });
           world.addComponent<Lifetime>(novaEntity, LIFETIME, { remaining: 0.3 });
         }
 
+        // Necromancer death: kill all its spawned minions
+        if (enemy.type === EnemyType.Necromancer) {
+          for (const otherEntity of world.query(ENEMY)) {
+            const otherEnemy = world.getComponent<Enemy>(otherEntity, ENEMY);
+            if (otherEnemy && otherEnemy.spawnOwner === entity) {
+              const otherHealth = world.getComponent<Health>(otherEntity, HEALTH);
+              if (otherHealth) otherHealth.current = 0;
+            }
+          }
+        }
+
         // Splitting affix: spawn 2 smaller copies
+        // Necromancers that split become Swarm to prevent recursive summoners
         if (enemy.affixes.includes(EliteAffix.Splitting)) {
+          const splitType = enemy.type === EnemyType.Necromancer ? EnemyType.Swarm : enemy.type;
           for (let i = 0; i < 2; i++) {
             const splitEntity = world.createEntity();
             const offsetX = (Math.random() - 0.5) * 30;
@@ -87,7 +101,7 @@ export const HealthSystem: System = {
               zIndex: 2,
             });
             world.addComponent<Enemy>(splitEntity, ENEMY, {
-              type: enemy.type,
+              type: splitType,
               speed: enemy.speed * 1.2,
               damage: enemy.damage * 0.3,
               xpValue: 1,
@@ -96,6 +110,12 @@ export const HealthSystem: System = {
               attackCooldown: 1,
               attackTimer: 0,
               eliteName: '',
+              aiState: EnemyAIState.Chase,
+              aiStateTimer: 0,
+              preferredRange: 0,
+              projectileSpeed: 0,
+              projectileDamage: 0,
+              spawnOwner: 0,
             });
           }
         }

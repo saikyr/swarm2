@@ -112,14 +112,15 @@ export const CollisionSystem: System = {
       }
     }
 
-    // Check nova attacks vs enemies
+    // Check nova attacks vs enemies (or vs players for enemy-owned novas)
     for (const novaEntity of world.query(NOVA_ATTACK, TRANSFORM)) {
       const nova = world.getComponent<NovaAttack>(novaEntity, NOVA_ATTACK)!;
       const novaT = world.getComponent<Transform>(novaEntity, TRANSFORM)!;
+      const targetComponent = nova.isEnemyOwned ? PLAYER : ENEMY;
 
       const nearby = spatialHash.query(novaT.pos, nova.radius);
       for (const other of nearby) {
-        if (!world.hasComponent(other, ENEMY)) continue;
+        if (!world.hasComponent(other, targetComponent)) continue;
         if (nova.hitEntities.has(other)) continue;
 
         const otherT = world.getComponent<Transform>(other, TRANSFORM)!;
@@ -132,18 +133,28 @@ export const CollisionSystem: System = {
         nova.hitEntities.add(other);
         const health = world.getComponent<Health>(other, HEALTH);
         if (health) {
-          health.current -= nova.damage;
-          world.addComponent(other, DAMAGE_FLASH, { timer: 0.08, duration: 0.08 });
-          spawnDamageNumber(world, otherT.pos.x, otherT.pos.y - (otherC?.radius ?? 10), nova.damage);
+          if (nova.isEnemyOwned) {
+            // Enemy nova vs player: apply iframes
+            if (health.iframes > 0) continue;
+            health.current -= nova.damage;
+            health.iframes = 0.5;
+            world.addComponent(other, DAMAGE_FLASH, { timer: 0.1, duration: 0.1 });
+            if (screenShakeRef) addScreenShake(screenShakeRef, 5);
+          } else {
+            health.current -= nova.damage;
+            world.addComponent(other, DAMAGE_FLASH, { timer: 0.08, duration: 0.08 });
+            spawnDamageNumber(world, otherT.pos.x, otherT.pos.y - (otherC?.radius ?? 10), nova.damage);
+          }
         }
       }
     }
 
-    // Check ground zone damage ticks
+    // Check ground zone damage ticks (vs enemies, or vs players for enemy-owned zones)
     for (const zoneEntity of world.query(GROUND_ZONE, TRANSFORM)) {
       const zone = world.getComponent<GroundZone>(zoneEntity, GROUND_ZONE)!;
       const zoneT = world.getComponent<Transform>(zoneEntity, TRANSFORM)!;
-      const zoneDmgMult = getOwnerDmgMult(zone.owner);
+      const zoneDmgMult = zone.isEnemyOwned ? 1 : getOwnerDmgMult(zone.owner);
+      const targetComponent = zone.isEnemyOwned ? PLAYER : ENEMY;
 
       zone.tickTimer -= dt;
       if (zone.tickTimer > 0) continue;
@@ -151,7 +162,7 @@ export const CollisionSystem: System = {
 
       const nearby = spatialHash.query(zoneT.pos, zone.radius);
       for (const other of nearby) {
-        if (!world.hasComponent(other, ENEMY)) continue;
+        if (!world.hasComponent(other, targetComponent)) continue;
 
         const otherT = world.getComponent<Transform>(other, TRANSFORM)!;
         const otherC = world.getComponent<Collider>(other, COLLIDER);
@@ -161,10 +172,18 @@ export const CollisionSystem: System = {
 
         const health = world.getComponent<Health>(other, HEALTH);
         if (health) {
-          const dmg = zone.damage * zoneDmgMult;
-          health.current -= dmg;
-          world.addComponent(other, DAMAGE_FLASH, { timer: 0.08, duration: 0.08 });
-          spawnDamageNumber(world, otherT.pos.x, otherT.pos.y - (otherC?.radius ?? 10), dmg);
+          if (zone.isEnemyOwned) {
+            if (health.iframes > 0) continue;
+            health.current -= zone.damage;
+            health.iframes = 0.3;
+            world.addComponent(other, DAMAGE_FLASH, { timer: 0.1, duration: 0.1 });
+            if (screenShakeRef) addScreenShake(screenShakeRef, 3);
+          } else {
+            const dmg = zone.damage * zoneDmgMult;
+            health.current -= dmg;
+            world.addComponent(other, DAMAGE_FLASH, { timer: 0.08, duration: 0.08 });
+            spawnDamageNumber(world, otherT.pos.x, otherT.pos.y - (otherC?.radius ?? 10), dmg);
+          }
         }
       }
     }
@@ -197,6 +216,39 @@ export const CollisionSystem: System = {
             spawnDamageNumber(world, otherT.pos.x, otherT.pos.y - otherC.radius, dmg);
             if (screenShakeRef) addScreenShake(screenShakeRef, 2);
           }
+        }
+      }
+    }
+
+    // Check enemy projectiles vs player
+    for (const projEntity of world.query(PROJECTILE, TRANSFORM, COLLIDER)) {
+      const projC = world.getComponent<Collider>(projEntity, COLLIDER)!;
+      if (projC.layer !== CollisionLayer.EnemyProjectile) continue;
+
+      const proj = world.getComponent<Projectile>(projEntity, PROJECTILE)!;
+      const projT = world.getComponent<Transform>(projEntity, TRANSFORM)!;
+
+      const nearby = spatialHash.query(projT.pos, projC.radius + 32);
+      for (const other of nearby) {
+        if (other === projEntity) continue;
+        if (!world.hasComponent(other, PLAYER)) continue;
+        if (proj.hitEntities.has(other)) continue;
+
+        const otherT = world.getComponent<Transform>(other, TRANSFORM)!;
+        const otherC = world.getComponent<Collider>(other, COLLIDER)!;
+        const otherH = world.getComponent<Health>(other, HEALTH);
+        if (!otherH || otherH.iframes > 0) continue;
+
+        const distSq = vec2DistSq(projT.pos, otherT.pos);
+        const minDist = projC.radius + otherC.radius;
+        if (distSq <= minDist * minDist) {
+          proj.hitEntities.add(other);
+          otherH.current -= proj.damage;
+          otherH.iframes = 0.5;
+          world.addComponent(other, DAMAGE_FLASH, { timer: 0.1, duration: 0.1 });
+          if (screenShakeRef) addScreenShake(screenShakeRef, 5);
+          world.destroyEntity(projEntity);
+          break;
         }
       }
     }

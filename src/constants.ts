@@ -126,8 +126,24 @@ export enum GameState {
 
 // Enemy types
 export enum EnemyType {
-  Basic = 'basic',
-  Fast = 'fast',
-  Tank = 'tank',
-  Ranged = 'ranged',
+  Swarm = 'swarm',
+  Dasher = 'dasher',
+  Brute = 'brute',
+  Spitter = 'spitter',
+  Orbiter = 'orbiter',
+  Bomber = 'bomber',
+  Necromancer = 'necromancer',
+}
+
+// Enemy AI states
+export enum EnemyAIState {
+  Chase = 'chase',
+  Orbit = 'orbit',
+  Dash = 'dash',
+  WindUp = 'wind_up',
+  Retreat = 'retreat',
+  Shoot = 'shoot',
+  Stomp = 'stomp',
+  Drop = 'drop',
+  Summon = 'summon',
 }

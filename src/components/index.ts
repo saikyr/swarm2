@@ -1,5 +1,5 @@
 import type { Vec2 } from '../utils/math';
-import type { ClassType, EnemyType, EliteAffix, TargetingType, AttackPattern, Rarity } from '../constants';
+import type { ClassType, EnemyType, EliteAffix, EnemyAIState, TargetingType, AttackPattern, Rarity } from '../constants';
 
 // Component store names
 export const TRANSFORM = 'transform';
@@ -111,6 +111,12 @@ export interface Enemy {
   attackCooldown: number;
   attackTimer: number;
   eliteName: string;
+  aiState: EnemyAIState;
+  aiStateTimer: number;
+  preferredRange: number;
+  projectileSpeed: number;
+  projectileDamage: number;
+  spawnOwner: number;
 }
 
 export interface Weapon {
@@ -226,6 +232,7 @@ export interface NovaAttack {
   owner: number;
   hitEntities: Set<number>;
   color: string;
+  isEnemyOwned?: boolean;
 }
 
 export interface OrbitalProjectile {
@@ -261,6 +268,7 @@ export interface GroundZone {
   tickInterval: number;
   tickTimer: number;
   color: string;
+  isEnemyOwned?: boolean;
 }
 
 export interface RuneCharge {
