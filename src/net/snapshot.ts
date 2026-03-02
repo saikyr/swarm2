@@ -65,7 +65,7 @@ export class SnapshotManager {
     return { entities };
   }
 
-  applySnapshot(snapshot: SnapshotData, protectedEntities?: Set<number>): void {
+  applySnapshot(snapshot: SnapshotData): void {
     const existingEntities = new Set<number>();
 
     // Track which entities are in the snapshot
@@ -93,7 +93,6 @@ export class SnapshotManager {
         // Don't destroy local-only particle/damage-number entities
         if (this.world.hasComponent(entity, PARTICLE)) continue;
         if (this.world.hasComponent(entity, DAMAGE_NUMBER)) continue;
-        if (protectedEntities && protectedEntities.has(entity)) continue;
         this.world.destroyEntity(entity);
       }
     }

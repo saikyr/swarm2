@@ -9,7 +9,7 @@ import {
   TRANSFORM, VELOCITY, HEALTH, COLLIDER, RENDERABLE, PLAYER, ENEMY, WEAPON,
   WEAPON_OWNER, PROJECTILE, PARTICLE, INPUT, DAMAGE_FLASH, TRAIL, LIFETIME, PICKUP,
   DAMAGE_NUMBER, SWEEP_ATTACK, NOVA_ATTACK, ORBITAL, BOOMERANG, GROUND_ZONE, RUNE_CHARGE, REVIVE_ZONE, SPIRAL_PROJECTILE,
-  type Transform, type Health, type Player, type Weapon, type WeaponOwner,
+  type Transform, type Health, type Player, type Weapon, type WeaponOwner, type Trail,
 } from '../components';
 import { generateUpgradeCards, generateOverclockCards, generateWeaponUnlockCards } from '../data/upgrades';
 import type { UpgradeCard, PlayerEndStats } from '../rendering/ui';
@@ -49,7 +49,6 @@ import { Interpolator } from '../net/interpolation';
 import { ClientEffectReactor } from '../net/client-effects';
 import { setEntityIdOffset } from '../ecs/entity';
 import { initAudio, unlockAudio, playSound, suspendAudio, resumeAudio, startAmbientDrone, updateAmbientDrone, stopAmbientDrone } from '../audio/audio';
-import { ClientPredictor } from '../net/client-prediction';
 import { spawnBeamFx } from '../rendering/particles';
 import { DAMAGE_NUMBER_RISE_SPEED } from '../constants';
 import type { DamageNumberData, DamageFlash, Transform as TransformType } from '../components';
@@ -88,11 +87,10 @@ export class Game {
   private lobby: Lobby = createLobby();
   private snapshotMgr: SnapshotManager | null = null;
   private interpolator: Interpolator | null = null;
-  private snapshotInterval = 1 / 30; // 30Hz
+  private snapshotInterval = 1 / 60; // 60Hz
   private snapshotTimer = 0;
   private prevRawSnapshot: SnapshotData | null = null;
   private clientReactor = new ClientEffectReactor();
-  private predictor = new ClientPredictor();
 
   // Upgrade flow for multiplayer (simultaneous picking)
   private upgradingPlayerId = -1; // solo/client: which player is upgrading
@@ -747,7 +745,6 @@ export class Game {
   private onRoomCreated(msg: RoomCreatedMsg): void {
     this.lobby.roomCode = msg.roomCode;
     this.localPlayerId = msg.playerId;
-    this.predictor.setLocalPlayerId(msg.playerId);
     this.lobby.players = [{ playerId: msg.playerId, ready: false }];
     changeState(this.stateMgr, GameState.ClassSelect);
   }
@@ -755,7 +752,6 @@ export class Game {
   private onJoinedRoom(msg: JoinedRoomMsg): void {
     this.lobby.roomCode = msg.roomCode;
     this.localPlayerId = msg.playerId;
-    this.predictor.setLocalPlayerId(msg.playerId);
     this.lobby.players = msg.players.map((p: any) => ({ playerId: p.playerId, ready: false }));
     changeState(this.stateMgr, GameState.ClassSelect);
   }
@@ -1006,35 +1002,28 @@ export class Game {
         if (this.interpolator && this.snapshotMgr) {
           this.interpolator.update(rawDt);
 
-          // Lazy-detect local player entity and exclude from interpolation
-          this.predictor.detectLocalEntity(this.world);
-          const localEntity = this.predictor.getLocalEntity();
-          if (localEntity !== null) {
-            this.interpolator.excludeEntity(localEntity);
-          }
-
-          // Apply interpolated snapshot for OTHER entities (local player excluded)
+          // Apply interpolated snapshot for ALL entities (pure interpolation, no prediction)
           const snapshot = this.interpolator.getInterpolated();
           if (snapshot) {
-            const protectedEntities = localEntity !== null ? new Set([localEntity]) : undefined;
-            this.snapshotMgr.applySnapshot(snapshot, protectedEntities);
+            this.snapshotMgr.applySnapshot(snapshot);
             this.world.flushDestroy();
-          }
-
-          // On genuinely new snapshot: correct local player + sync non-position data
-          if (this.interpolator.consumeNewSnapshot()) {
-            const rawSnapshot = this.interpolator.getLatestRawSnapshot();
-            if (rawSnapshot) {
-              this.predictor.applyServerCorrection(this.world, rawSnapshot);
-              this.predictor.syncComponents(this.world, rawSnapshot);
-            }
           }
         }
 
-        // Only predict movement and send input during Playing (not Upgrading)
+        // Update local player trail (CleanupSystem only runs on host)
+        for (const entity of this.world.query(TRAIL, TRANSFORM, PLAYER)) {
+          const p = this.world.getComponent<Player>(entity, PLAYER)!;
+          if (p.playerId === this.localPlayerId) {
+            const trail = this.world.getComponent<Trail>(entity, TRAIL)!;
+            const t = this.world.getComponent<Transform>(entity, TRANSFORM)!;
+            trail.positions.push({ x: t.pos.x, y: t.pos.y });
+            if (trail.positions.length > trail.maxLength) trail.positions.shift();
+            break;
+          }
+        }
+
+        // Send input during Playing
         if (state === GameState.Playing) {
-          this.predictor.predict(this.world, rawDt);
-          this.predictor.updateTrail(this.world);
           this.sendLocalInput(rawDt);
         }
 
