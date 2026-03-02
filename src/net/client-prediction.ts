@@ -1,47 +1,50 @@
-import { TRANSFORM, VELOCITY, PLAYER } from '../components';
-import type { Transform, Velocity, Player } from '../components';
+import { TRANSFORM, VELOCITY, PLAYER, HEALTH } from '../components';
+import type { Transform, Velocity, Player, Health } from '../components';
 import type { World } from '../ecs/ecs';
 import type { SnapshotData } from './snapshot';
 import { WORLD_WIDTH, WORLD_HEIGHT, PLAYER_RADIUS } from '../constants';
 import { getKeyboardInput } from '../systems/InputSystem';
 
 const SNAP_THRESHOLD_SQ = 200 * 200;
-const BLEND_TOWARD_SERVER = 0.35; // per new snapshot (~20Hz), blend 35% toward server
+const BLEND_TOWARD_SERVER = 0.35;
 
 export class ClientPredictor {
   private localPlayerId = 0;
-  private savedPos: { x: number; y: number } | null = null;
+  private localEntity: number | null = null;
 
   setLocalPlayerId(id: number): void {
     this.localPlayerId = id;
   }
 
-  /** Save predicted position BEFORE snapshot overwrites it */
-  savePosition(world: World): void {
-    const entity = this.findLocal(world);
-    if (entity === null) { this.savedPos = null; return; }
-    const t = world.getComponent<Transform>(entity, TRANSFORM)!;
-    this.savedPos = { x: t.pos.x, y: t.pos.y };
+  getLocalEntity(): number | null {
+    return this.localEntity;
   }
 
-  /** After snapshot applied: restore predicted position (snapshot updated all other components) */
-  restorePosition(world: World): void {
-    if (!this.savedPos) return;
-    const entity = this.findLocal(world);
-    if (entity === null) return;
-    const t = world.getComponent<Transform>(entity, TRANSFORM)!;
-    t.pos.x = this.savedPos.x;
-    t.pos.y = this.savedPos.y;
+  /** Find and cache the local player entity from the world */
+  detectLocalEntity(world: World): number | null {
+    if (this.localEntity !== null && world.hasEntity(this.localEntity)) {
+      return this.localEntity;
+    }
+    for (const entity of world.query(PLAYER, TRANSFORM)) {
+      const p = world.getComponent<Player>(entity, PLAYER)!;
+      if (p.playerId === this.localPlayerId) {
+        this.localEntity = entity;
+        return entity;
+      }
+    }
+    this.localEntity = null;
+    return null;
   }
 
-  /** Correct predicted position toward server on new snapshot arrival (~20Hz) */
+  /** On new snapshot (~30Hz): blend local player toward server position */
   applyServerCorrection(world: World, rawSnapshot: SnapshotData): void {
-    const entity = this.findLocal(world);
+    const entity = this.localEntity;
     if (entity === null) return;
 
-    const t = world.getComponent<Transform>(entity, TRANSFORM)!;
+    const t = world.getComponent<Transform>(entity, TRANSFORM);
+    if (!t) return;
 
-    // Find this entity's server position in the raw snapshot
+    // Find server position in raw snapshot
     const serverEntity = rawSnapshot.entities.find(e => e.id === entity);
     if (!serverEntity?.components?.transform) return;
     const serverPos = serverEntity.components.transform.pos;
@@ -50,24 +53,64 @@ export class ClientPredictor {
     const errY = t.pos.y - serverPos.y;
 
     if (errX * errX + errY * errY > SNAP_THRESHOLD_SQ) {
-      // Large error (teleport/respawn) — snap to server
       t.pos.x = serverPos.x;
       t.pos.y = serverPos.y;
       return;
     }
 
-    // Blend predicted position toward server to correct drift
     t.pos.x += (serverPos.x - t.pos.x) * BLEND_TOWARD_SERVER;
     t.pos.y += (serverPos.y - t.pos.y) * BLEND_TOWARD_SERVER;
   }
 
-  /** Apply local input to move the player immediately */
-  predict(world: World, dt: number): void {
-    const entity = this.findLocal(world);
+  /** Sync non-position components (health, xp, speed, etc.) from raw snapshot */
+  syncComponents(world: World, rawSnapshot: SnapshotData): void {
+    const entity = this.localEntity;
     if (entity === null) return;
 
-    const player = world.getComponent<Player>(entity, PLAYER)!;
-    const t = world.getComponent<Transform>(entity, TRANSFORM)!;
+    const serverEntity = rawSnapshot.entities.find(e => e.id === entity);
+    if (!serverEntity) return;
+
+    // Sync player stats (xp, level, speed, etc.)
+    const serverPlayer = serverEntity.components?.player;
+    if (serverPlayer) {
+      const localPlayer = world.getComponent<Player>(entity, PLAYER);
+      if (localPlayer) {
+        // Copy all fields except position-related ones that prediction handles
+        localPlayer.xp = serverPlayer.xp;
+        localPlayer.xpToNext = serverPlayer.xpToNext;
+        localPlayer.level = serverPlayer.level;
+        localPlayer.kills = serverPlayer.kills;
+        localPlayer.downed = serverPlayer.downed;
+        localPlayer.damageMultiplier = serverPlayer.damageMultiplier;
+        localPlayer.speedMultiplier = serverPlayer.speedMultiplier;
+        localPlayer.pickupRadiusMultiplier = serverPlayer.pickupRadiusMultiplier;
+        localPlayer.isDashing = serverPlayer.isDashing;
+        localPlayer.chilledTimer = serverPlayer.chilledTimer;
+        localPlayer.speed = serverPlayer.speed;
+        localPlayer.damageDealt = serverPlayer.damageDealt;
+      }
+    }
+
+    // Sync health
+    const serverHealth = serverEntity.components?.health;
+    if (serverHealth) {
+      const localHealth = world.getComponent<Health>(entity, HEALTH);
+      if (localHealth) {
+        localHealth.current = serverHealth.current;
+        localHealth.max = serverHealth.max;
+        localHealth.iframes = serverHealth.iframes;
+      }
+    }
+  }
+
+  /** Apply local input to move the player immediately (every frame) */
+  predict(world: World, dt: number): void {
+    const entity = this.localEntity;
+    if (entity === null) return;
+
+    const player = world.getComponent<Player>(entity, PLAYER);
+    const t = world.getComponent<Transform>(entity, TRANSFORM);
+    if (!player || !t) return;
 
     if (player.downed) return;
 
@@ -90,16 +133,7 @@ export class ClientPredictor {
     t.pos.x += vx * dt;
     t.pos.y += vy * dt;
 
-    // World bounds
     t.pos.x = Math.max(PLAYER_RADIUS, Math.min(WORLD_WIDTH - PLAYER_RADIUS, t.pos.x));
     t.pos.y = Math.max(PLAYER_RADIUS, Math.min(WORLD_HEIGHT - PLAYER_RADIUS, t.pos.y));
-  }
-
-  private findLocal(world: World): number | null {
-    for (const entity of world.query(PLAYER, TRANSFORM)) {
-      const p = world.getComponent<Player>(entity, PLAYER)!;
-      if (p.playerId === this.localPlayerId) return entity;
-    }
-    return null;
   }
 }

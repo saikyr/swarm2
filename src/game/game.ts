@@ -88,7 +88,7 @@ export class Game {
   private lobby: Lobby = createLobby();
   private snapshotMgr: SnapshotManager | null = null;
   private interpolator: Interpolator | null = null;
-  private snapshotInterval = 1 / 20; // 20Hz
+  private snapshotInterval = 1 / 30; // 30Hz
   private snapshotTimer = 0;
   private prevRawSnapshot: SnapshotData | null = null;
   private clientReactor = new ClientEffectReactor();
@@ -570,61 +570,48 @@ export class Game {
     }
   }
 
+  /** Local player picks an upgrade (solo, host, or client) */
   private pickUpgrade(index: number): void {
-    if (index >= 0 && index < this.upgradeCards.length) {
-      const card = this.upgradeCards[index];
-      card.apply();
-      this.run.upgradesPicked.push(card.id);
+    if (index < 0 || index >= this.upgradeCards.length) return;
 
-      const pickingPlayerId = this.upgradingPlayerId;
-      const pd = this.playerData.get(pickingPlayerId) ?? this.getLocalPlayerData();
-      const weaponEnts = pd?.weaponEntities ?? [];
+    const card = this.upgradeCards[index];
+    card.apply();
+    this.run.upgradesPicked.push(card.id);
 
-      // Check if the specific weapon that was just leveled hit an overclock threshold
-      if (card.type === 'weapon_levelup' && card.weaponId) {
-        for (const we of weaponEnts) {
-          const w = this.world.getComponent<Weapon>(we, WEAPON);
-          if (w && w.id === card.weaponId && [4, 7, 10].includes(w.level)) {
-            const ocCards = generateOverclockCards(w);
-            if (ocCards.length > 0) {
-              this.upgradeCards = ocCards;
-              this.selectedUpgrade = 0;
-              this.mouseClicked = false;
-              clearPendingTaps();
-              this.upgradeInputDelay = 2;
-              // Update pending cards for this player
-              if (this.networkRole === 'host') {
-                this.pendingUpgrades.set(pickingPlayerId, ocCards);
-              }
-              if (this.networkRole === 'host' && pickingPlayerId !== this.localPlayerId && this.netHost) {
-                this.netHost.sendToPlayer(pickingPlayerId, {
-                  type: MessageType.UpgradeOptions, playerId: pickingPlayerId,
-                  cards: ocCards.map((c, i) => ({
-                    index: i, id: c.id, name: c.name, description: c.description,
-                    rarity: c.rarity, cardType: c.type, weaponName: c.weaponName,
-                    overclockTier: c.overclockTier,
-                  })),
-                });
-              }
-              return;
+    // Check overclock cascade for the local player's weapon
+    const pd = this.playerData.get(this.upgradingPlayerId) ?? this.getLocalPlayerData();
+    if (pd && card.type === 'weapon_levelup' && card.weaponId) {
+      for (const we of pd.weaponEntities) {
+        const w = this.world.getComponent<Weapon>(we, WEAPON);
+        if (w && w.id === card.weaponId && [4, 7, 10].includes(w.level)) {
+          const ocCards = generateOverclockCards(w);
+          if (ocCards.length > 0) {
+            this.upgradeCards = ocCards;
+            this.selectedUpgrade = 0;
+            this.mouseClicked = false;
+            clearPendingTaps();
+            this.upgradeInputDelay = 2;
+            if (this.networkRole === 'host') {
+              this.pendingUpgrades.set(this.upgradingPlayerId, ocCards);
             }
-            break;
+            return; // Show overclock cards
           }
+          break;
         }
       }
+    }
 
-      if (this.networkRole === 'client' && this.netClient) {
-        this.netClient.send({ type: MessageType.UpgradePick, playerId: this.localPlayerId, cardIndex: index });
-        changeState(this.stateMgr, GameState.Playing);
-        return;
-      }
+    if (this.networkRole === 'client' && this.netClient) {
+      this.netClient.send({ type: MessageType.UpgradePick, playerId: this.localPlayerId, cardIndex: index });
+      this.upgradingPlayerId = -1; // Show waiting screen until UpgradeResolved
+      return;
+    }
 
-      if (this.networkRole === 'host') {
-        this.resolveHostUpgrade(pickingPlayerId);
-      } else {
-        // Solo
-        changeState(this.stateMgr, GameState.Playing);
-      }
+    if (this.networkRole === 'host') {
+      this.resolveHostUpgrade(this.upgradingPlayerId);
+    } else {
+      // Solo
+      changeState(this.stateMgr, GameState.Playing);
     }
   }
 
@@ -871,10 +858,38 @@ export class Game {
     const playerCards = this.pendingUpgrades.get(msg.playerId);
     if (!playerCards || msg.cardIndex < 0 || msg.cardIndex >= playerCards.length) return;
 
-    // Temporarily set up upgrade context for this remote player's pick
-    this.upgradeCards = playerCards;
-    this.upgradingPlayerId = msg.playerId;
-    this.pickUpgrade(msg.cardIndex);
+    // Apply directly from pendingUpgrades — don't touch this.upgradeCards (host may be mid-pick)
+    const card = playerCards[msg.cardIndex];
+    card.apply();
+    this.run.upgradesPicked.push(card.id);
+
+    // Check overclock cascade for the remote player's weapon
+    const pd = this.playerData.get(msg.playerId);
+    if (pd && card.type === 'weapon_levelup' && card.weaponId) {
+      for (const we of pd.weaponEntities) {
+        const w = this.world.getComponent<Weapon>(we, WEAPON);
+        if (w && w.id === card.weaponId && [4, 7, 10].includes(w.level)) {
+          const ocCards = generateOverclockCards(w);
+          if (ocCards.length > 0) {
+            this.pendingUpgrades.set(msg.playerId, ocCards);
+            if (this.netHost) {
+              this.netHost.sendToPlayer(msg.playerId, {
+                type: MessageType.UpgradeOptions, playerId: msg.playerId,
+                cards: ocCards.map((c, i) => ({
+                  index: i, id: c.id, name: c.name, description: c.description,
+                  rarity: c.rarity, cardType: c.type, weaponName: c.weaponName,
+                  overclockTier: c.overclockTier,
+                })),
+              });
+            }
+            return; // Wait for next pick
+          }
+          break;
+        }
+      }
+    }
+
+    this.resolveHostUpgrade(msg.playerId);
   }
 
   private onNetUpgradeResolved(_msg: UpgradeResolvedMsg): void {
@@ -943,48 +958,49 @@ export class Game {
 
     const state = this.stateMgr.current;
 
-    // Client: always keep interpolator advancing and apply snapshots (even during Upgrading)
-    // so we don't get stale data when returning to Playing
-    if (this.networkRole === 'client' && this.interpolator && this.snapshotMgr) {
-      this.interpolator.update(rawDt);
-
-      // Save predicted position before snapshot overwrites it
-      this.predictor.savePosition(this.world);
-
-      // Apply interpolated snapshot — updates ALL entities including local player's stats
-      const snapshot = this.interpolator.getInterpolated();
-      if (snapshot) {
-        this.snapshotMgr.applySnapshot(snapshot);
-        this.world.flushDestroy();
-      }
-
-      // Restore predicted position (snapshot updated health, xp, speed etc. but not our position)
-      this.predictor.restorePosition(this.world);
-
-      // Server correction: only on genuinely new snapshots (~20Hz)
-      if (this.interpolator.consumeNewSnapshot()) {
-        const rawSnapshot = this.interpolator.getLatestRawSnapshot();
-        if (rawSnapshot) {
-          this.predictor.applyServerCorrection(this.world, rawSnapshot);
-        }
-      }
-    }
-
-    if (state === GameState.Playing) {
+    if (state === GameState.Playing || (state === GameState.Upgrading && this.networkRole === 'client')) {
       if (this.networkRole === 'client') {
-        // Predict local player movement for instant responsiveness
-        this.predictor.predict(this.world, rawDt);
+        if (this.interpolator && this.snapshotMgr) {
+          this.interpolator.update(rawDt);
+
+          // Lazy-detect local player entity and exclude from interpolation
+          this.predictor.detectLocalEntity(this.world);
+          const localEntity = this.predictor.getLocalEntity();
+          if (localEntity !== null) {
+            this.interpolator.excludeEntity(localEntity);
+          }
+
+          // Apply interpolated snapshot for OTHER entities (local player excluded)
+          const snapshot = this.interpolator.getInterpolated();
+          if (snapshot) {
+            const protectedEntities = localEntity !== null ? new Set([localEntity]) : undefined;
+            this.snapshotMgr.applySnapshot(snapshot, protectedEntities);
+            this.world.flushDestroy();
+          }
+
+          // On genuinely new snapshot: correct local player + sync non-position data
+          if (this.interpolator.consumeNewSnapshot()) {
+            const rawSnapshot = this.interpolator.getLatestRawSnapshot();
+            if (rawSnapshot) {
+              this.predictor.applyServerCorrection(this.world, rawSnapshot);
+              this.predictor.syncComponents(this.world, rawSnapshot);
+            }
+          }
+        }
+
+        // Only predict movement and send input during Playing (not Upgrading)
+        if (state === GameState.Playing) {
+          this.predictor.predict(this.world, rawDt);
+          this.sendLocalInput(rawDt);
+        }
 
         // Tick client-only visual effects (particles, damage numbers, damage flash)
         ParticleSystem.update(this.world, rawDt);
         this.updateClientEffects(rawDt);
         this.world.flushDestroy();
 
-        // Update camera to follow local player (follows predicted position)
+        // Update camera to follow local player
         this.updateClientCamera(rawDt);
-
-        // Send local input to host — read keyboard directly, don't rely on InputSystem
-        this.sendLocalInput(rawDt);
       } else {
         // Host or Solo: run full ECS simulation
         const paused = updateHitPause(this.hitPause, rawDt);
@@ -1001,22 +1017,6 @@ export class Game {
           }
         }
 
-        // Host: broadcast snapshots at 20Hz
-        if (this.networkRole === 'host' && this.netHost && this.snapshotMgr) {
-          this.snapshotTimer += rawDt;
-          if (this.snapshotTimer >= this.snapshotInterval) {
-            this.snapshotTimer -= this.snapshotInterval;
-            const snapshot = this.snapshotMgr.createSnapshot();
-            const events = drainGameEvents();
-            const msg: any = {
-              type: MessageType.Snapshot,
-              tick: this.run.timer,
-              snapshot,
-            };
-            if (events.length > 0) msg.events = events;
-            this.netHost.broadcast(msg);
-          }
-        }
       }
 
       updateScreenShake(this.screenShake, rawDt);
@@ -1024,6 +1024,24 @@ export class Game {
 
       if (this.networkRole !== 'client') {
         this.checkAllPlayersDead();
+      }
+    }
+
+    // Host: broadcast snapshots at 30Hz — always, regardless of game state
+    // (client needs up-to-date data even during Upgrading to avoid stale positions)
+    if (this.networkRole === 'host' && this.netHost && this.snapshotMgr) {
+      this.snapshotTimer += rawDt;
+      if (this.snapshotTimer >= this.snapshotInterval) {
+        this.snapshotTimer -= this.snapshotInterval;
+        const snapshot = this.snapshotMgr.createSnapshot();
+        const events = drainGameEvents();
+        const msg: any = {
+          type: MessageType.Snapshot,
+          tick: this.run.timer,
+          snapshot,
+        };
+        if (events.length > 0) msg.events = events;
+        this.netHost.broadcast(msg);
       }
     }
 
