@@ -93,12 +93,10 @@ export class Game {
   private prevRawSnapshot: SnapshotData | null = null;
   private clientReactor = new ClientEffectReactor();
   private predictor = new ClientPredictor();
-  private _localPlayerEntityCached: number | null = null;
 
-  // Upgrade flow for multiplayer
-  private upgradingPlayerId = -1;
-  private upgradeQueue: number[] = [];
-  private waitingForUpgrade = false;
+  // Upgrade flow for multiplayer (simultaneous picking)
+  private upgradingPlayerId = -1; // solo/client: which player is upgrading
+  private pendingUpgrades = new Map<number, UpgradeCard[]>(); // host: all players currently picking
   private remoteUpgradePlayerName = '';
 
   // Lobby UI state
@@ -242,6 +240,7 @@ export class Game {
       }
     } else if (state === GameState.Upgrading) {
       if (this.upgradeInputDelay > 0) return;
+      if (this.upgradingPlayerId !== this.localPlayerId && this.networkRole !== 'solo') return;
       const layout = getUpgradeCardLayout(width, height, this.upgradeCards.length);
       const { cardW, cardH, gap, startX, startY, vertical } = layout;
       for (let i = 0; i < this.upgradeCards.length; i++) {
@@ -321,6 +320,7 @@ export class Game {
         }
       } else if (state === GameState.Upgrading) {
         if (this.upgradeInputDelay > 0) return; // Ignore input while delay active
+        if (this.upgradingPlayerId !== this.localPlayerId && this.networkRole !== 'solo') return;
         if (e.code === 'Digit1' && this.upgradeCards.length >= 1) {
           this.pickUpgrade(0);
         } else if (e.code === 'Digit2' && this.upgradeCards.length >= 2) {
@@ -456,7 +456,6 @@ export class Game {
     camera.targetX = WORLD_WIDTH / 2;
     camera.targetY = WORLD_HEIGHT / 2;
 
-    this._localPlayerEntityCached = null;
     this.interpolator = new Interpolator();
     this.snapshotMgr = new SnapshotManager(this.world);
 
@@ -502,68 +501,72 @@ export class Game {
     const player = this.world.getComponent<Player>(playerEntity, PLAYER);
     if (!player) return;
 
-    if (this.networkRole === 'solo') {
-      if (this.hasWeaponUnlockAvailable(playerEntity)) {
-        this.upgradeCards = generateWeaponUnlockCards(this.world, playerEntity);
-      } else {
-        this.upgradeCards = generateUpgradeCards(this.world, 3, playerEntity);
-      }
-      this.selectedUpgrade = 0;
-      this.upgradingPlayerId = player.playerId;
-      this.mouseClicked = false; // Clear stale clicks to prevent auto-selecting an upgrade
-      clearPendingTaps(); // Clear buffered touch taps from gameplay
-      this.upgradeInputDelay = 2; // Ignore clicks for 2 frames to prevent stale click auto-selection
-      changeState(this.stateMgr, GameState.Upgrading);
-    } else if (this.networkRole === 'host') {
-      this.upgradeQueue.push(player.playerId);
-      if (!this.waitingForUpgrade) {
-        this.processNextUpgrade();
-      }
-    }
-  }
-
-  private processNextUpgrade(): void {
-    if (this.upgradeQueue.length === 0) {
-      this.waitingForUpgrade = false;
-      if (this.stateMgr.current === GameState.Upgrading) {
-        changeState(this.stateMgr, GameState.Playing);
-      }
-      return;
-    }
-
-    this.waitingForUpgrade = true;
-    const playerId = this.upgradeQueue.shift()!;
-    this.upgradingPlayerId = playerId;
-
+    const playerId = player.playerId;
     const pd = this.playerData.get(playerId);
-    if (!pd) { this.processNextUpgrade(); return; }
+    if (!pd) return;
 
-    if (this.hasWeaponUnlockAvailable(pd.entity)) {
-      this.upgradeCards = generateWeaponUnlockCards(this.world, pd.entity);
+    let cards: UpgradeCard[];
+    if (this.hasWeaponUnlockAvailable(playerEntity)) {
+      cards = generateWeaponUnlockCards(this.world, playerEntity);
     } else {
-      this.upgradeCards = generateUpgradeCards(this.world, 3, pd.entity);
+      cards = generateUpgradeCards(this.world, 3, playerEntity);
     }
-    this.selectedUpgrade = 0;
 
-    if (playerId === this.localPlayerId) {
-      this.mouseClicked = false; // Clear stale clicks to prevent auto-selecting an upgrade
-      clearPendingTaps(); // Clear buffered touch taps from gameplay
+    if (this.networkRole === 'solo') {
+      this.upgradeCards = cards;
+      this.selectedUpgrade = 0;
+      this.upgradingPlayerId = playerId;
+      this.mouseClicked = false;
+      clearPendingTaps();
       this.upgradeInputDelay = 2;
       changeState(this.stateMgr, GameState.Upgrading);
-    } else {
-      changeState(this.stateMgr, GameState.Upgrading);
-      this.remoteUpgradePlayerName = `Player ${playerId + 1}`;
-      if (this.netHost) {
+    } else if (this.networkRole === 'host') {
+      // Store cards for this player — multiple players can upgrade simultaneously
+      this.pendingUpgrades.set(playerId, cards);
+
+      // If this is the host player, set up local upgrade UI
+      if (playerId === this.localPlayerId) {
+        this.upgradeCards = cards;
+        this.selectedUpgrade = 0;
+        this.upgradingPlayerId = playerId;
+        this.mouseClicked = false;
+        clearPendingTaps();
+        this.upgradeInputDelay = 2;
+      }
+
+      // Send cards to remote player
+      if (playerId !== this.localPlayerId && this.netHost) {
         this.netHost.sendToPlayer(playerId, {
           type: MessageType.UpgradeOptions,
           playerId,
-          cards: this.upgradeCards.map((c, i) => ({
+          cards: cards.map((c, i) => ({
             index: i, id: c.id, name: c.name, description: c.description,
             rarity: c.rarity, cardType: c.type, weaponId: c.weaponId, weaponName: c.weaponName,
             overclockTier: c.overclockTier,
           })),
         });
       }
+
+      changeState(this.stateMgr, GameState.Upgrading);
+    }
+  }
+
+  /** Host: resolve a player's upgrade pick and check if all players are done */
+  private resolveHostUpgrade(playerId: number): void {
+    this.pendingUpgrades.delete(playerId);
+
+    if (this.netHost) {
+      this.netHost.broadcast({ type: MessageType.UpgradeResolved, playerId });
+    }
+
+    // If all pending upgrades are resolved, resume game
+    if (this.pendingUpgrades.size === 0) {
+      if (this.stateMgr.current === GameState.Upgrading) {
+        changeState(this.stateMgr, GameState.Playing);
+      }
+    } else if (playerId === this.localPlayerId) {
+      // Host finished but other players still picking — show waiting
+      this.upgradingPlayerId = -1;
     }
   }
 
@@ -573,7 +576,8 @@ export class Game {
       card.apply();
       this.run.upgradesPicked.push(card.id);
 
-      const pd = this.playerData.get(this.upgradingPlayerId) ?? this.getLocalPlayerData();
+      const pickingPlayerId = this.upgradingPlayerId;
+      const pd = this.playerData.get(pickingPlayerId) ?? this.getLocalPlayerData();
       const weaponEnts = pd?.weaponEntities ?? [];
 
       // Check if the specific weapon that was just leveled hit an overclock threshold
@@ -588,10 +592,14 @@ export class Game {
               this.mouseClicked = false;
               clearPendingTaps();
               this.upgradeInputDelay = 2;
-              if (this.networkRole === 'host' && this.upgradingPlayerId !== this.localPlayerId && this.netHost) {
-                this.netHost.sendToPlayer(this.upgradingPlayerId, {
-                  type: MessageType.UpgradeOptions, playerId: this.upgradingPlayerId,
-                  cards: this.upgradeCards.map((c, i) => ({
+              // Update pending cards for this player
+              if (this.networkRole === 'host') {
+                this.pendingUpgrades.set(pickingPlayerId, ocCards);
+              }
+              if (this.networkRole === 'host' && pickingPlayerId !== this.localPlayerId && this.netHost) {
+                this.netHost.sendToPlayer(pickingPlayerId, {
+                  type: MessageType.UpgradeOptions, playerId: pickingPlayerId,
+                  cards: ocCards.map((c, i) => ({
                     index: i, id: c.id, name: c.name, description: c.description,
                     rarity: c.rarity, cardType: c.type, weaponName: c.weaponName,
                     overclockTier: c.overclockTier,
@@ -600,13 +608,9 @@ export class Game {
               }
               return;
             }
-            break; // Only check the specific weapon
+            break;
           }
         }
-      }
-
-      if (this.networkRole === 'host' && this.netHost) {
-        this.netHost.broadcast({ type: MessageType.UpgradeResolved, playerId: this.upgradingPlayerId });
       }
 
       if (this.networkRole === 'client' && this.netClient) {
@@ -616,8 +620,9 @@ export class Game {
       }
 
       if (this.networkRole === 'host') {
-        this.processNextUpgrade();
+        this.resolveHostUpgrade(pickingPlayerId);
       } else {
+        // Solo
         changeState(this.stateMgr, GameState.Playing);
       }
     }
@@ -863,9 +868,13 @@ export class Game {
 
   private onNetUpgradePick(msg: { playerId: number; cardIndex: number }): void {
     if (this.networkRole !== 'host') return;
-    if (msg.playerId === this.upgradingPlayerId && msg.cardIndex >= 0 && msg.cardIndex < this.upgradeCards.length) {
-      this.pickUpgrade(msg.cardIndex);
-    }
+    const playerCards = this.pendingUpgrades.get(msg.playerId);
+    if (!playerCards || msg.cardIndex < 0 || msg.cardIndex >= playerCards.length) return;
+
+    // Temporarily set up upgrade context for this remote player's pick
+    this.upgradeCards = playerCards;
+    this.upgradingPlayerId = msg.playerId;
+    this.pickUpgrade(msg.cardIndex);
   }
 
   private onNetUpgradeResolved(_msg: UpgradeResolvedMsg): void {
@@ -934,43 +943,35 @@ export class Game {
 
     const state = this.stateMgr.current;
 
+    // Client: always keep interpolator advancing and apply snapshots (even during Upgrading)
+    // so we don't get stale data when returning to Playing
+    if (this.networkRole === 'client' && this.interpolator && this.snapshotMgr) {
+      this.interpolator.update(rawDt);
+
+      // Save predicted position before snapshot overwrites it
+      this.predictor.savePosition(this.world);
+
+      // Apply interpolated snapshot — updates ALL entities including local player's stats
+      const snapshot = this.interpolator.getInterpolated();
+      if (snapshot) {
+        this.snapshotMgr.applySnapshot(snapshot);
+        this.world.flushDestroy();
+      }
+
+      // Restore predicted position (snapshot updated health, xp, speed etc. but not our position)
+      this.predictor.restorePosition(this.world);
+
+      // Server correction: only on genuinely new snapshots (~20Hz)
+      if (this.interpolator.consumeNewSnapshot()) {
+        const rawSnapshot = this.interpolator.getLatestRawSnapshot();
+        if (rawSnapshot) {
+          this.predictor.applyServerCorrection(this.world, rawSnapshot);
+        }
+      }
+    }
+
     if (state === GameState.Playing) {
       if (this.networkRole === 'client') {
-        // Client: apply interpolated snapshots, local player fully predicted
-        if (this.interpolator && this.snapshotMgr) {
-          this.interpolator.update(rawDt);
-
-          // Lazy-detect local player entity to exclude from interpolation
-          if (this._localPlayerEntityCached === null) {
-            for (const entity of this.world.query(PLAYER, TRANSFORM)) {
-              const p = this.world.getComponent<Player>(entity, PLAYER)!;
-              if (p.playerId === this.localPlayerId) {
-                this.interpolator.excludeEntity(entity);
-                this._localPlayerEntityCached = entity;
-                break;
-              }
-            }
-          }
-
-          // Apply interpolated snapshot (local player excluded — only other entities update)
-          const snapshot = this.interpolator.getInterpolated();
-          if (snapshot) {
-            const protectedEntities = this._localPlayerEntityCached !== null
-              ? new Set([this._localPlayerEntityCached])
-              : undefined;
-            this.snapshotMgr.applySnapshot(snapshot, protectedEntities);
-            this.world.flushDestroy();
-          }
-
-          // Server correction for local player: only on genuinely new snapshots (~20Hz)
-          if (this.interpolator.consumeNewSnapshot()) {
-            const rawSnapshot = this.interpolator.getLatestRawSnapshot();
-            if (rawSnapshot) {
-              this.predictor.applyServerCorrection(this.world, rawSnapshot);
-            }
-          }
-        }
-
         // Predict local player movement for instant responsiveness
         this.predictor.predict(this.world, rawDt);
 
@@ -1270,7 +1271,7 @@ export class Game {
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 20px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText(`Player ${this.upgradingPlayerId + 1} is choosing an upgrade...`, width / 2, height / 2);
+    ctx.fillText('Waiting for other player...', width / 2, height / 2);
     ctx.restore();
   }
 

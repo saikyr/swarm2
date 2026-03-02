@@ -10,9 +10,28 @@ const BLEND_TOWARD_SERVER = 0.35; // per new snapshot (~20Hz), blend 35% toward 
 
 export class ClientPredictor {
   private localPlayerId = 0;
+  private savedPos: { x: number; y: number } | null = null;
 
   setLocalPlayerId(id: number): void {
     this.localPlayerId = id;
+  }
+
+  /** Save predicted position BEFORE snapshot overwrites it */
+  savePosition(world: World): void {
+    const entity = this.findLocal(world);
+    if (entity === null) { this.savedPos = null; return; }
+    const t = world.getComponent<Transform>(entity, TRANSFORM)!;
+    this.savedPos = { x: t.pos.x, y: t.pos.y };
+  }
+
+  /** After snapshot applied: restore predicted position (snapshot updated all other components) */
+  restorePosition(world: World): void {
+    if (!this.savedPos) return;
+    const entity = this.findLocal(world);
+    if (entity === null) return;
+    const t = world.getComponent<Transform>(entity, TRANSFORM)!;
+    t.pos.x = this.savedPos.x;
+    t.pos.y = this.savedPos.y;
   }
 
   /** Correct predicted position toward server on new snapshot arrival (~20Hz) */
