@@ -463,7 +463,7 @@ export function drawUpgradeMenu(
       ctx.font = mobile ? '8px monospace' : '9px monospace';
       ctx.textAlign = 'center';
       ctx.fillText(`[${card.targetTag.charAt(0).toUpperCase() + card.targetTag.slice(1)}]`,
-        cx + cardW / 2, cy + cardH - (mobile ? 8 : 30));
+        cx + cardW / 2, cy + cardH - (mobile ? 18 : 42));
     }
 
     // Keybind

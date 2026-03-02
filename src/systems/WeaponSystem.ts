@@ -118,46 +118,54 @@ function getProjectileShape(weapon: Weapon): Renderable['shape'] {
 
 function fireProjectile(world: World, owner: number, transform: Transform, weapon: Weapon): void {
   if (!weapon.target) return;
-  const dir = vec2Normalize(vec2Sub({ x: weapon.target.x, y: weapon.target.y }, transform.pos));
+  const baseDir = vec2Normalize(vec2Sub({ x: weapon.target.x, y: weapon.target.y }, transform.pos));
   const shape = getProjectileShape(weapon);
+  const count = weapon.count || 1;
+  const baseAngle = vec2Angle(baseDir);
+  const totalSpread = count > 1 ? 0.3 + (count - 2) * 0.1 : 0;
 
-  const e = world.createEntity();
-  world.addComponent<Transform>(e, TRANSFORM, {
-    pos: { x: transform.pos.x, y: transform.pos.y },
-    prevPos: { x: transform.pos.x, y: transform.pos.y },
-    rotation: vec2Angle(dir),
-  });
-  world.addComponent<Velocity>(e, VELOCITY, {
-    x: dir.x * weapon.projectileSpeed,
-    y: dir.y * weapon.projectileSpeed,
-  });
-  world.addComponent<Projectile>(e, PROJECTILE, {
-    damage: weapon.damage,
-    owner,
-    piercing: weapon.piercing,
-    hitEntities: new Set(),
-  });
-  world.addComponent<Collider>(e, COLLIDER, {
-    radius: weapon.projectileRadius,
-    layer: CollisionLayer.PlayerProjectile,
-    mask: [CollisionLayer.Enemy],
-  });
-  world.addComponent<Renderable>(e, RENDERABLE, {
-    shape,
-    radius: weapon.projectileRadius,
-    color: weapon.projectileColor,
-    glowColor: weapon.projectileColor,
-    glowSize: 10,
-    alpha: 1,
-    zIndex: 3,
-  });
-  world.addComponent<Lifetime>(e, LIFETIME, { remaining: weapon.projectileLifetime });
-  world.addComponent<Trail>(e, TRAIL, {
-    positions: [],
-    maxLength: 10,
-    width: weapon.projectileRadius * 0.8,
-    color: weapon.projectileColor,
-  });
+  for (let i = 0; i < count; i++) {
+    const angle = count <= 1 ? baseAngle : baseAngle - totalSpread / 2 + totalSpread * i / (count - 1);
+    const dir = { x: Math.cos(angle), y: Math.sin(angle) };
+
+    const e = world.createEntity();
+    world.addComponent<Transform>(e, TRANSFORM, {
+      pos: { x: transform.pos.x, y: transform.pos.y },
+      prevPos: { x: transform.pos.x, y: transform.pos.y },
+      rotation: angle,
+    });
+    world.addComponent<Velocity>(e, VELOCITY, {
+      x: dir.x * weapon.projectileSpeed,
+      y: dir.y * weapon.projectileSpeed,
+    });
+    world.addComponent<Projectile>(e, PROJECTILE, {
+      damage: weapon.damage,
+      owner,
+      piercing: weapon.piercing,
+      hitEntities: new Set(),
+    });
+    world.addComponent<Collider>(e, COLLIDER, {
+      radius: weapon.projectileRadius,
+      layer: CollisionLayer.PlayerProjectile,
+      mask: [CollisionLayer.Enemy],
+    });
+    world.addComponent<Renderable>(e, RENDERABLE, {
+      shape,
+      radius: weapon.projectileRadius,
+      color: weapon.projectileColor,
+      glowColor: weapon.projectileColor,
+      glowSize: 10,
+      alpha: 1,
+      zIndex: 3,
+    });
+    world.addComponent<Lifetime>(e, LIFETIME, { remaining: weapon.projectileLifetime });
+    world.addComponent<Trail>(e, TRAIL, {
+      positions: [],
+      maxLength: 10,
+      width: weapon.projectileRadius * 0.8,
+      color: weapon.projectileColor,
+    });
+  }
 }
 
 function fireSpread(world: World, owner: number, transform: Transform, weapon: Weapon): void {

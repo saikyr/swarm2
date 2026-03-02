@@ -4,13 +4,11 @@ import type { World } from '../ecs/ecs';
 import { WORLD_WIDTH, WORLD_HEIGHT, PLAYER_RADIUS } from '../constants';
 import { getKeyboardInput } from '../systems/InputSystem';
 
-const CORRECTION_RATE = 10;        // exponential decay speed — ~90% corrected in 230ms
-const SNAP_THRESHOLD_SQ = 200 * 200; // above this distance², snap instantly
+const SNAP_THRESHOLD_SQ = 200 * 200;
+const BLEND_TOWARD_SERVER = 0.15; // each snapshot, blend 15% toward server position
 
 export class ClientPredictor {
   private localPlayerId = 0;
-  private corrX = 0;
-  private corrY = 0;
 
   setLocalPlayerId(id: number): void {
     this.localPlayerId = id;
@@ -24,27 +22,29 @@ export class ClientPredictor {
     return { x: t.pos.x, y: t.pos.y };
   }
 
-  /** Compute correction offset AFTER snapshot applied */
+  /** After snapshot: restore predicted position, blend slightly toward server */
   afterSnapshot(world: World, predicted: { x: number; y: number } | null): void {
     const entity = this.findLocal(world);
-    if (entity === null || !predicted) {
-      this.corrX = 0;
-      this.corrY = 0;
+    if (entity === null || !predicted) return;
+
+    const t = world.getComponent<Transform>(entity, TRANSFORM)!;
+    const serverX = t.pos.x;
+    const serverY = t.pos.y;
+
+    const errX = predicted.x - serverX;
+    const errY = predicted.y - serverY;
+
+    if (errX * errX + errY * errY > SNAP_THRESHOLD_SQ) {
+      // Large error (teleport/respawn) — keep server position
       return;
     }
-    const t = world.getComponent<Transform>(entity, TRANSFORM)!;
-    const errX = predicted.x - t.pos.x;
-    const errY = predicted.y - t.pos.y;
-    if (errX * errX + errY * errY > SNAP_THRESHOLD_SQ) {
-      this.corrX = 0;
-      this.corrY = 0;
-    } else {
-      this.corrX += errX;
-      this.corrY += errY;
-    }
+
+    // Restore predicted position but blend toward server to correct drift
+    t.pos.x = predicted.x + (serverX - predicted.x) * BLEND_TOWARD_SERVER;
+    t.pos.y = predicted.y + (serverY - predicted.y) * BLEND_TOWARD_SERVER;
   }
 
-  /** Run local movement prediction + decay correction */
+  /** Apply local input to move the player immediately */
   predict(world: World, dt: number): void {
     const entity = this.findLocal(world);
     if (entity === null) return;
@@ -52,11 +52,7 @@ export class ClientPredictor {
     const player = world.getComponent<Player>(entity, PLAYER)!;
     const t = world.getComponent<Transform>(entity, TRANSFORM)!;
 
-    if (player.downed) {
-      this.corrX = 0;
-      this.corrY = 0;
-      return;
-    }
+    if (player.downed) return;
 
     const input = getKeyboardInput();
     let vx: number, vy: number;
@@ -80,13 +76,6 @@ export class ClientPredictor {
     // World bounds
     t.pos.x = Math.max(PLAYER_RADIUS, Math.min(WORLD_WIDTH - PLAYER_RADIUS, t.pos.x));
     t.pos.y = Math.max(PLAYER_RADIUS, Math.min(WORLD_HEIGHT - PLAYER_RADIUS, t.pos.y));
-
-    // Decay and apply correction offset
-    const decay = Math.min(1, CORRECTION_RATE * dt);
-    this.corrX *= 1 - decay;
-    this.corrY *= 1 - decay;
-    t.pos.x += this.corrX;
-    t.pos.y += this.corrY;
   }
 
   private findLocal(world: World): number | null {
