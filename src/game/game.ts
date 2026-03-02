@@ -1278,16 +1278,7 @@ export class Game {
       const playerT = this.world.getComponent<Transform>(localData.entity, TRANSFORM);
 
       if (player && health && playerT) {
-        this.weaponSlotData.length = WEAPON_UNLOCK_LEVELS.length;
-        for (let i = 0; i < WEAPON_UNLOCK_LEVELS.length; i++) this.weaponSlotData[i] = undefined as any;
-        for (let i = 0; i < localData.weaponEntities.length; i++) {
-          const we = localData.weaponEntities[i];
-          const wo = this.world.getComponent<WeaponOwner>(we, WEAPON_OWNER);
-          const w = this.world.getComponent<Weapon>(we, WEAPON);
-          if (wo && w && wo.slotIndex < WEAPON_UNLOCK_LEVELS.length) {
-            this.weaponSlotData[wo.slotIndex] = w;
-          }
-        }
+        this.buildWeaponSlotData(localData.weaponEntities, localData.entity);
 
         drawHUD(this.cc, player, health, this.run, {
           players: this.getAllPlayerPositions(),
@@ -1303,16 +1294,13 @@ export class Game {
       if (p.playerId === this.localPlayerId) {
         const health = this.world.getComponent<Health>(pe, HEALTH)!;
 
-        // Find weapon slots for this player, sorted by slotIndex
-        this.weaponSlotData.length = WEAPON_UNLOCK_LEVELS.length;
-        for (let i = 0; i < WEAPON_UNLOCK_LEVELS.length; i++) this.weaponSlotData[i] = undefined as any;
+        // Find weapon slots for this player
+        const weaponEntities: number[] = [];
         for (const we of this.world.query(WEAPON, WEAPON_OWNER)) {
           const wo = this.world.getComponent<WeaponOwner>(we, WEAPON_OWNER);
-          if (wo && wo.owner === pe && wo.slotIndex < WEAPON_UNLOCK_LEVELS.length) {
-            const w = this.world.getComponent<Weapon>(we, WEAPON);
-            if (w) this.weaponSlotData[wo.slotIndex] = w;
-          }
+          if (wo && wo.owner === pe) weaponEntities.push(we);
         }
+        this.buildWeaponSlotData(weaponEntities, pe);
 
         drawHUD(this.cc, p, health, this.run, {
           players: this.getAllPlayerPositions(),
@@ -1320,6 +1308,33 @@ export class Game {
         }, this.weaponSlotData);
         break;
       }
+    }
+  }
+
+  /** Pack unlocked weapons into consecutive slots, then show one locked placeholder */
+  private buildWeaponSlotData(weaponEntities: number[], ownerEntity: number): void {
+    // Collect all weapons with slotIndex, sorted by slotIndex
+    const weapons: { w: Weapon; slotIndex: number }[] = [];
+    for (const we of weaponEntities) {
+      const wo = this.world.getComponent<WeaponOwner>(we, WEAPON_OWNER);
+      const w = this.world.getComponent<Weapon>(we, WEAPON);
+      if (wo && w && wo.owner === ownerEntity) {
+        weapons.push({ w, slotIndex: wo.slotIndex });
+      }
+    }
+    weapons.sort((a, b) => a.slotIndex - b.slotIndex);
+
+    // Pack unlocked weapons first, then one locked placeholder
+    const unlocked = weapons.filter(x => !x.w.locked);
+    const nextLocked = weapons.find(x => x.w.locked);
+    const total = unlocked.length + (nextLocked ? 1 : 0);
+
+    this.weaponSlotData.length = total;
+    for (let i = 0; i < unlocked.length; i++) {
+      this.weaponSlotData[i] = unlocked[i].w;
+    }
+    if (nextLocked) {
+      this.weaponSlotData[unlocked.length] = nextLocked.w;
     }
   }
 
