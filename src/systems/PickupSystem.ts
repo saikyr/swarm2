@@ -60,10 +60,8 @@ export const PickupSystem: System = {
       // Pickup
       if (dist < pickup.pickupRadius) {
         if (pickup.type === 'xp') {
-          // Share XP with ALL living players
+          // Share XP with ALL players (including downed) to keep upgrades synced
           for (const pe of players) {
-            const ph = world.getComponent<Health>(pe, HEALTH);
-            if (ph && ph.current <= 0) continue;
             const p = world.getComponent<Player>(pe, PLAYER)!;
             p.xp += pickup.value;
           }
