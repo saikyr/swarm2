@@ -87,7 +87,7 @@ export class Game {
   private lobby: Lobby = createLobby();
   private snapshotMgr: SnapshotManager | null = null;
   private interpolator: Interpolator | null = null;
-  private snapshotInterval = 1 / 60; // 60Hz
+  private snapshotInterval = 1 / 30; // 30Hz
   private snapshotTimer = 0;
   private prevRawSnapshot: SnapshotData | null = null;
   private clientReactor = new ClientEffectReactor();

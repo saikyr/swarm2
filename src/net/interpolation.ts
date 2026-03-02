@@ -8,7 +8,7 @@ interface TimedSnapshot {
 
 export class Interpolator {
   private buffer: TimedSnapshot[] = [];
-  private interpolationDelay = 0.035; // 35ms interpolation buffer (~1 snapshot at 60Hz)
+  private interpolationDelay = 0.07; // 70ms interpolation buffer (~2 snapshots at 30Hz)
   private currentTime = 0;
   private hasNew = false;
 
