@@ -1,5 +1,5 @@
-import { TRANSFORM, VELOCITY, PLAYER, HEALTH } from '../components';
-import type { Transform, Velocity, Player, Health } from '../components';
+import { TRANSFORM, VELOCITY, PLAYER, HEALTH, TRAIL } from '../components';
+import type { Transform, Velocity, Player, Health, Trail } from '../components';
 import type { World } from '../ecs/ecs';
 import type { SnapshotData } from './snapshot';
 import { WORLD_WIDTH, WORLD_HEIGHT, PLAYER_RADIUS } from '../constants';
@@ -135,5 +135,18 @@ export class ClientPredictor {
 
     t.pos.x = Math.max(PLAYER_RADIUS, Math.min(WORLD_WIDTH - PLAYER_RADIUS, t.pos.x));
     t.pos.y = Math.max(PLAYER_RADIUS, Math.min(WORLD_HEIGHT - PLAYER_RADIUS, t.pos.y));
+  }
+
+  /** Update trail positions for local player (CleanupSystem only runs on host) */
+  updateTrail(world: World): void {
+    const entity = this.localEntity;
+    if (entity === null) return;
+    const trail = world.getComponent<Trail>(entity, TRAIL);
+    const t = world.getComponent<Transform>(entity, TRANSFORM);
+    if (!trail || !t) return;
+    trail.positions.push({ x: t.pos.x, y: t.pos.y });
+    if (trail.positions.length > trail.maxLength) {
+      trail.positions.shift();
+    }
   }
 }

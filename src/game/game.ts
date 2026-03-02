@@ -42,7 +42,7 @@ import { ReviveSystem } from '../systems/ReviveSystem';
 // Networking
 import { NetClient } from '../net/client';
 import { NetHost } from '../net/host';
-import { MessageType, type NetMessage, type RoomCreatedMsg, type JoinedRoomMsg, type PlayerJoinedMsg, type PlayerLeftMsg, type StartGameMsg, type SnapshotMsg, type UpgradeOptionsMsg, type UpgradeResolvedMsg, type GameOverMsg, type RoomErrorMsg } from '../net/messages';
+import { MessageType, type NetMessage, type RoomCreatedMsg, type JoinedRoomMsg, type PlayerJoinedMsg, type PlayerLeftMsg, type StartGameMsg, type SnapshotMsg, type UpgradeOptionsMsg, type UpgradeResolvedMsg, type GameOverMsg, type RoomErrorMsg, type PauseMsg } from '../net/messages';
 import { createLobby, type Lobby } from './lobby';
 import { SnapshotManager, type SnapshotData } from '../net/snapshot';
 import { Interpolator } from '../net/interpolation';
@@ -253,8 +253,7 @@ export class Game {
         }
       }
     } else if (state === GameState.Paused) {
-      changeState(this.stateMgr, GameState.Playing);
-      resumeAudio();
+      this.togglePause(false);
     } else if (state === GameState.GameOver) {
       this.endRun();
     }
@@ -340,13 +339,11 @@ export class Game {
         }
       } else if (state === GameState.Playing) {
         if (e.code === 'Escape') {
-          changeState(this.stateMgr, GameState.Paused);
-          suspendAudio();
+          this.togglePause(true);
         }
       } else if (state === GameState.Paused) {
         if (e.code === 'Escape' || e.code === 'Enter') {
-          changeState(this.stateMgr, GameState.Playing);
-          resumeAudio();
+          this.togglePause(false);
         }
       }
     });
@@ -555,12 +552,11 @@ export class Game {
   private resolveHostUpgrade(playerId: number): void {
     this.pendingUpgrades.delete(playerId);
 
-    if (this.netHost) {
-      this.netHost.broadcast({ type: MessageType.UpgradeResolved, playerId });
-    }
-
-    // If all pending upgrades are resolved, resume game
+    // Only broadcast UpgradeResolved and resume when ALL players are done
     if (this.pendingUpgrades.size === 0) {
+      if (this.netHost) {
+        this.netHost.broadcast({ type: MessageType.UpgradeResolved, playerId });
+      }
       if (this.stateMgr.current === GameState.Upgrading) {
         changeState(this.stateMgr, GameState.Playing);
       }
@@ -729,6 +725,9 @@ export class Game {
           break;
         case MessageType.GameOver:
           this.onNetGameOver(msg as GameOverMsg);
+          break;
+        case MessageType.Pause:
+          this.onNetPause(msg as PauseMsg);
           break;
         case MessageType.RoomError:
           this.lobbyError = (msg as RoomErrorMsg).reason;
@@ -904,6 +903,50 @@ export class Game {
     stopAmbientDrone();
   }
 
+  /** Toggle pause — handles solo, host broadcast, and client request */
+  private togglePause(paused: boolean): void {
+    if (this.networkRole === 'solo') {
+      if (paused) {
+        changeState(this.stateMgr, GameState.Paused);
+        suspendAudio();
+      } else {
+        changeState(this.stateMgr, GameState.Playing);
+        resumeAudio();
+      }
+    } else if (this.networkRole === 'host') {
+      // Host: apply locally and broadcast
+      if (paused) {
+        changeState(this.stateMgr, GameState.Paused);
+        suspendAudio();
+      } else {
+        changeState(this.stateMgr, GameState.Playing);
+        resumeAudio();
+      }
+      if (this.netHost) {
+        this.netHost.broadcast({ type: MessageType.Pause, paused });
+      }
+    } else if (this.networkRole === 'client' && this.netClient) {
+      // Client: request pause from host
+      this.netClient.send({ type: MessageType.Pause, paused });
+    }
+  }
+
+  private onNetPause(msg: PauseMsg): void {
+    if (this.networkRole === 'host') {
+      // Client requested pause toggle — host decides and broadcasts
+      this.togglePause(msg.paused);
+    } else if (this.networkRole === 'client') {
+      // Host broadcast — apply locally
+      if (msg.paused) {
+        changeState(this.stateMgr, GameState.Paused);
+        suspendAudio();
+      } else {
+        changeState(this.stateMgr, GameState.Playing);
+        resumeAudio();
+      }
+    }
+  }
+
   private allPlayersReady(): boolean {
     for (const p of this.lobby.players) {
       if (!this.lobby.classSelections.has(p.playerId)) return false;
@@ -958,7 +1001,7 @@ export class Game {
 
     const state = this.stateMgr.current;
 
-    if (state === GameState.Playing || (state === GameState.Upgrading && this.networkRole === 'client')) {
+    if (state === GameState.Playing || state === GameState.Paused || (state === GameState.Upgrading && this.networkRole === 'client')) {
       if (this.networkRole === 'client') {
         if (this.interpolator && this.snapshotMgr) {
           this.interpolator.update(rawDt);
@@ -991,6 +1034,7 @@ export class Game {
         // Only predict movement and send input during Playing (not Upgrading)
         if (state === GameState.Playing) {
           this.predictor.predict(this.world, rawDt);
+          this.predictor.updateTrail(this.world);
           this.sendLocalInput(rawDt);
         }
 
@@ -1001,8 +1045,8 @@ export class Game {
 
         // Update camera to follow local player
         this.updateClientCamera(rawDt);
-      } else {
-        // Host or Solo: run full ECS simulation
+      } else if (state === GameState.Playing) {
+        // Host or Solo: run full ECS simulation (only during Playing, not Paused)
         const paused = updateHitPause(this.hitPause, rawDt);
         if (!paused) {
           this.accumulator += dt;
@@ -1016,7 +1060,6 @@ export class Game {
             if (this.stateMgr.current !== GameState.Playing) break;
           }
         }
-
       }
 
       updateScreenShake(this.screenShake, rawDt);
@@ -1052,9 +1095,8 @@ export class Game {
       setTouchMode(state === GameState.Playing ? 'gameplay' : 'menu');
 
       // Check pause button tap during gameplay
-      if (consumePauseTap() && state === GameState.Playing) {
-        changeState(this.stateMgr, GameState.Paused);
-        suspendAudio();
+      if (consumePauseTap() && (state === GameState.Playing || state === GameState.Paused)) {
+        this.togglePause(state === GameState.Playing);
       }
 
       const tap = consumeTap();

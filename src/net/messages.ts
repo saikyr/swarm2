@@ -25,6 +25,7 @@ export enum MessageType {
 
   // Lifecycle
   GameOver = 'game_over',
+  Pause = 'pause',
 }
 
 export interface NetMessage {
@@ -134,4 +135,9 @@ export interface UpgradeResolvedMsg extends NetMessage {
 
 export interface GameOverMsg extends NetMessage {
   type: MessageType.GameOver;
+}
+
+export interface PauseMsg extends NetMessage {
+  type: MessageType.Pause;
+  paused: boolean;
 }
