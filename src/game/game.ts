@@ -93,6 +93,7 @@ export class Game {
   private prevRawSnapshot: SnapshotData | null = null;
   private clientReactor = new ClientEffectReactor();
   private predictor = new ClientPredictor();
+  private _localPlayerEntityCached: number | null = null;
 
   // Upgrade flow for multiplayer
   private upgradingPlayerId = -1;
@@ -455,6 +456,7 @@ export class Game {
     camera.targetX = WORLD_WIDTH / 2;
     camera.targetY = WORLD_HEIGHT / 2;
 
+    this._localPlayerEntityCached = null;
     this.interpolator = new Interpolator();
     this.snapshotMgr = new SnapshotManager(this.world);
 
@@ -934,15 +936,38 @@ export class Game {
 
     if (state === GameState.Playing) {
       if (this.networkRole === 'client') {
-        // Client: apply interpolated snapshots with client-side prediction
+        // Client: apply interpolated snapshots, local player fully predicted
         if (this.interpolator && this.snapshotMgr) {
           this.interpolator.update(rawDt);
+
+          // Lazy-detect local player entity to exclude from interpolation
+          if (this._localPlayerEntityCached === null) {
+            for (const entity of this.world.query(PLAYER, TRANSFORM)) {
+              const p = this.world.getComponent<Player>(entity, PLAYER)!;
+              if (p.playerId === this.localPlayerId) {
+                this.interpolator.excludeEntity(entity);
+                this._localPlayerEntityCached = entity;
+                break;
+              }
+            }
+          }
+
+          // Apply interpolated snapshot (local player excluded — only other entities update)
           const snapshot = this.interpolator.getInterpolated();
           if (snapshot) {
-            const predictedPos = this.predictor.beforeSnapshot(this.world);
-            this.snapshotMgr.applySnapshot(snapshot);
+            const protectedEntities = this._localPlayerEntityCached !== null
+              ? new Set([this._localPlayerEntityCached])
+              : undefined;
+            this.snapshotMgr.applySnapshot(snapshot, protectedEntities);
             this.world.flushDestroy();
-            this.predictor.afterSnapshot(this.world, predictedPos);
+          }
+
+          // Server correction for local player: only on genuinely new snapshots (~20Hz)
+          if (this.interpolator.consumeNewSnapshot()) {
+            const rawSnapshot = this.interpolator.getLatestRawSnapshot();
+            if (rawSnapshot) {
+              this.predictor.applyServerCorrection(this.world, rawSnapshot);
+            }
           }
         }
 

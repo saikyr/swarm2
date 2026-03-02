@@ -60,7 +60,13 @@ export const PickupSystem: System = {
       // Pickup
       if (dist < pickup.pickupRadius) {
         if (pickup.type === 'xp') {
-          player.xp += pickup.value;
+          // Share XP with ALL living players
+          for (const pe of players) {
+            const ph = world.getComponent<Health>(pe, HEALTH);
+            if (ph && ph.current <= 0) continue;
+            const p = world.getComponent<Player>(pe, PLAYER)!;
+            p.xp += pickup.value;
+          }
           playSound('xp_pickup', transform.pos.x, transform.pos.y);
         } else if (pickup.type === 'health' && playerH) {
           playerH.current = Math.min(playerH.max, playerH.current + pickup.value);

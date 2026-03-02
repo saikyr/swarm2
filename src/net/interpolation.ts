@@ -10,10 +10,29 @@ export class Interpolator {
   private buffer: TimedSnapshot[] = [];
   private interpolationDelay = 0.1; // 100ms interpolation buffer (2 snapshots at 20Hz)
   private currentTime = 0;
+  private excludedIds = new Set<number>();
+  private hasNew = false;
+
+  excludeEntity(id: number): void {
+    this.excludedIds.add(id);
+  }
+
+  /** Returns true once per new pushSnapshot call, then resets */
+  consumeNewSnapshot(): boolean {
+    const v = this.hasNew;
+    this.hasNew = false;
+    return v;
+  }
+
+  /** Returns the most recent raw (un-interpolated) snapshot */
+  getLatestRawSnapshot(): SnapshotData | null {
+    return this.buffer.length > 0 ? this.buffer[this.buffer.length - 1].snapshot : null;
+  }
 
   pushSnapshot(snapshot: SnapshotData, tick: number): void {
     const now = this.currentTime;
     this.buffer.push({ snapshot, tick, receiveTime: now });
+    this.hasNew = true;
 
     // Keep buffer bounded - only need a few snapshots for interpolation
     if (this.buffer.length > 10) {
@@ -54,7 +73,11 @@ export class Interpolator {
     const range = to.receiveTime - from.receiveTime;
     const t = range > 0 ? (renderTime - from.receiveTime) / range : 1;
 
-    return interpolateSnapshots(from.snapshot, to.snapshot, t);
+    const result = interpolateSnapshots(from.snapshot, to.snapshot, t);
+    if (this.excludedIds.size > 0) {
+      return { entities: result.entities.filter(e => !this.excludedIds.has(e.id)) };
+    }
+    return result;
   }
 }
 
