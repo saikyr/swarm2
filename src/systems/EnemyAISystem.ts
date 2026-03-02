@@ -13,6 +13,7 @@ import { vec2Normalize, vec2Sub, vec2DistSq } from '../utils/math';
 import { EnemyType, EnemyAIState, EliteAffix } from '../constants';
 import { spawnMinionSwarm } from './SpawnerSystem';
 import { emitParticles } from '../rendering/particles';
+import { simChance, simInt } from '../sim-core/random';
 
 /** Find the nearest alive player position to a given point */
 function findNearestPlayer(world: World, x: number, y: number): { pos: { x: number; y: number }; player: Player | null; entity: number } | null {
@@ -402,7 +403,7 @@ function updateNecromancer(
     }
 
     if (minionCount < NECRO_MAX_MINIONS) {
-      const count = 2 + Math.floor(Math.random() * 2); // 2-3 minions
+      const count = 2 + simInt(0, 1); // 2-3 minions
       for (let i = 0; i < count && minionCount + i < NECRO_MAX_MINIONS; i++) {
         spawnMinionSwarm(world, transform.pos.x, transform.pos.y, entity);
       }
@@ -428,7 +429,7 @@ function applyAffixes(
     if (enemy.aiState === EnemyAIState.Chase || enemy.aiState === EnemyAIState.Orbit) {
       // Reuse attackTimer for non-Dasher/Brute (they use it for dash direction/cooldown)
       // Use a frame-based random chance instead for safety
-      if (Math.random() < 1 - Math.pow(0.995, dt * 60)) { // ~0.5% per tick at 60fps, frame-rate independent
+      if (simChance(1 - Math.pow(0.995, dt * 60))) { // ~0.5% per tick at 60fps, frame-rate independent
         const dx = nearest.pos.x - transform.pos.x;
         const dy = nearest.pos.y - transform.pos.y;
         const dist = Math.sqrt(dx * dx + dy * dy);

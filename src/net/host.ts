@@ -15,7 +15,13 @@ export class NetHost {
 
   /** Send to a specific player (relay server will route based on playerId for targeted messages) */
   sendToPlayer(playerId: number, msg: NetMessage): void {
-    // The relay server handles routing for targeted messages like upgrade_options
-    this.client.send(msg);
+    const payload = msg as any;
+    if (payload && payload.v === 2) {
+      this.client.send({ ...payload, targetPlayerId: playerId });
+      return;
+    }
+
+    // v1 target routing hint.
+    this.client.send({ ...payload, __targetPlayerId: playerId });
   }
 }

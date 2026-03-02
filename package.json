@@ -8,7 +8,19 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "server": "npx tsx server/index.ts",
-    "start": "npx tsx server/index.ts"
+    "start": "npx tsx server/index.ts",
+    "test:netv2": "npx tsx scripts/net-v2-tests.ts",
+    "test:netv2:loss": "npx tsx scripts/net-v2-loss-recovery.ts",
+    "test:netv2:reconcile": "npx tsx scripts/net-v2-reconcile.ts",
+    "test:netdebug:schema": "npx tsx scripts/net-debug-schema.ts",
+    "test:netdebug:analyzer": "npx tsx scripts/net-debug-analyzer-test.ts",
+    "test:prediction:diagonal": "npx tsx scripts/net-v2-prediction-diagonal.ts",
+    "test:reconcile:tick-driven": "npx tsx scripts/net-v2-reconcile-tick-driven.ts",
+    "test:replica:skip-local-player": "npx tsx scripts/net-v2-replica-skip-local-player.ts",
+    "test:movement-model-parity": "npx tsx scripts/net-v2-movement-model-parity.ts",
+    "analyze:netdebug": "npx tsx scripts/analyze-net-debug.ts",
+    "soak:netv2": "npx tsx scripts/net-v2-soak.ts",
+    "soak:netv2:strict": "npx tsx scripts/net-v2-soak.ts --minutes=15 --strict"
   },
   "dependencies": {
     "ws": "^8.16.0"

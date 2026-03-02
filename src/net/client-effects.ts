@@ -2,7 +2,6 @@ import type { World } from '../ecs/ecs';
 import type { SnapshotData, SnapshotEntity } from './snapshot';
 import type { ScreenShake } from '../rendering/effects';
 import type { HitPause } from '../rendering/effects';
-import { addScreenShake, triggerHitPause } from '../rendering/effects';
 import { emitParticles } from '../rendering/particles';
 import { spawnDamageNumber } from '../rendering/damage-numbers';
 import { ENEMY, RENDERABLE, PROJECTILE, HEALTH, DAMAGE_FLASH } from '../components';
@@ -12,8 +11,8 @@ export class ClientEffectReactor {
     prev: SnapshotData | null,
     current: SnapshotData,
     world: World,
-    screenShake: ScreenShake,
-    hitPause: HitPause,
+    _screenShake: ScreenShake,
+    _hitPause: HitPause,
   ): void {
     if (!prev) return;
 
@@ -37,13 +36,6 @@ export class ClientEffectReactor {
         // Enemy died — particle burst
         const color = comps[RENDERABLE].color ?? '#ff4444';
         emitParticles(world, x, y, 12, color, { speed: 120, life: 0.6 });
-
-        addScreenShake(screenShake, 6);
-
-        if (comps[ENEMY].isElite) {
-          addScreenShake(screenShake, 12);
-          triggerHitPause(hitPause, 0.06);
-        }
       } else if (comps[PROJECTILE]) {
         // Projectile vanished — small impact burst
         const color = comps[RENDERABLE]?.color ?? '#ffcc00';

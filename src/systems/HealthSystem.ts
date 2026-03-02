@@ -5,7 +5,9 @@ import type { Health, Enemy, Player, Transform, Collider, Renderable, NovaAttack
 import { emitParticles } from '../rendering/particles';
 import { addScreenShake, triggerHitPause, type ScreenShake, type HitPause } from '../rendering/effects';
 import { PARTICLE_DEATH_COUNT_MIN, PARTICLE_DEATH_COUNT_MAX, HIT_PAUSE_DURATION, EliteAffix, EnemyType, EnemyAIState } from '../constants';
-import { playSound } from '../audio/audio';
+import { playSyncedSound } from '../audio/audio';
+import { simRandom } from '../sim-core/random';
+import { emitRunEvent } from '../sim-core/events';
 
 export let screenShakeRef: ScreenShake | null = null;
 export let hitPauseRef: HitPause | null = null;
@@ -27,7 +29,7 @@ export const HealthSystem: System = {
 
         // Death particles
         const color = renderable?.color ?? '#ff4444';
-        const count = PARTICLE_DEATH_COUNT_MIN + Math.floor(Math.random() * (PARTICLE_DEATH_COUNT_MAX - PARTICLE_DEATH_COUNT_MIN));
+        const count = PARTICLE_DEATH_COUNT_MIN + Math.floor(simRandom() * (PARTICLE_DEATH_COUNT_MAX - PARTICLE_DEATH_COUNT_MIN));
         emitParticles(world, transform.pos.x, transform.pos.y, count, color, {
           speed: 120,
           speedVar: 60,
@@ -38,11 +40,13 @@ export const HealthSystem: System = {
 
         // Sound + screen shake for kills
         if (enemy.isElite) {
-          playSound('elite_death', transform.pos.x, transform.pos.y);
+          playSyncedSound('elite_death', transform.pos.x, transform.pos.y);
           if (screenShakeRef) addScreenShake(screenShakeRef, 12);
           if (hitPauseRef) triggerHitPause(hitPauseRef, HIT_PAUSE_DURATION);
+          emitRunEvent({ type: 'shake', amount: 12 });
+          emitRunEvent({ type: 'hit_pause', duration: HIT_PAUSE_DURATION });
         } else {
-          playSound('enemy_death', transform.pos.x, transform.pos.y);
+          playSyncedSound('enemy_death', transform.pos.x, transform.pos.y);
         }
 
         // Explosive affix: spawn death nova
@@ -77,8 +81,8 @@ export const HealthSystem: System = {
           const splitType = enemy.type === EnemyType.Necromancer ? EnemyType.Swarm : enemy.type;
           for (let i = 0; i < 2; i++) {
             const splitEntity = world.createEntity();
-            const offsetX = (Math.random() - 0.5) * 30;
-            const offsetY = (Math.random() - 0.5) * 30;
+            const offsetX = (simRandom() - 0.5) * 30;
+            const offsetY = (simRandom() - 0.5) * 30;
             const splitRadius = (renderable?.radius ?? 10) * 0.7;
 
             world.addComponent<Transform>(splitEntity, TRANSFORM, {
@@ -135,7 +139,7 @@ export const HealthSystem: System = {
         spawnXpOrb(world, transform.pos.x, transform.pos.y, enemy.xpValue);
 
         // Rare drops: health pickup and XP magnet, elites have higher chance
-        const dropRoll = Math.random();
+        const dropRoll = simRandom();
         const healthChance = enemy.isElite ? 0.15 : 0.015;
         const magnetChance = enemy.isElite ? 0.05 : 0.005;
         if (dropRoll < healthChance) {
@@ -182,8 +186,8 @@ export const HealthSystem: System = {
 
 function spawnHealthPickup(world: World, x: number, y: number): void {
   const entity = world.createEntity();
-  const offsetX = (Math.random() - 0.5) * 16;
-  const offsetY = (Math.random() - 0.5) * 16;
+  const offsetX = (simRandom() - 0.5) * 16;
+  const offsetY = (simRandom() - 0.5) * 16;
   world.addComponent(entity, TRANSFORM, {
     pos: { x: x + offsetX, y: y + offsetY },
     prevPos: { x: x + offsetX, y: y + offsetY },
@@ -244,8 +248,8 @@ function spawnMagnetPickup(world: World, x: number, y: number): void {
 
 function spawnXpOrb(world: World, x: number, y: number, value: number): void {
   const entity = world.createEntity();
-  const offsetX = (Math.random() - 0.5) * 20;
-  const offsetY = (Math.random() - 0.5) * 20;
+  const offsetX = (simRandom() - 0.5) * 20;
+  const offsetY = (simRandom() - 0.5) * 20;
   world.addComponent(entity, TRANSFORM, {
     pos: { x: x + offsetX, y: y + offsetY },
     prevPos: { x: x + offsetX, y: y + offsetY },

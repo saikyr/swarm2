@@ -13,22 +13,15 @@ import type {
 import { CollisionLayer } from '../components';
 import { vec2Normalize, vec2Sub, vec2Angle, vec2DistSq } from '../utils/math';
 import { AttackPattern } from '../constants';
-import { playSound } from '../audio/audio';
+import { playSyncedSound } from '../audio/audio';
 import { WEAPON_DEFS } from '../data/weapons';
 import { spawnDamageNumber } from '../rendering/damage-numbers';
 import { spawnBeamFx } from '../rendering/particles';
-import type { GameEvent } from '../net/messages';
+import { simRange } from '../sim-core/random';
+import { emitRunEvent } from '../sim-core/events';
 
 // Track spawned orbitals per weapon entity
 const orbitalSpawned = new Set<number>();
-
-// Buffered game events for network broadcast
-const pendingGameEvents: GameEvent[] = [];
-
-export function drainGameEvents(): GameEvent[] {
-  if (pendingGameEvents.length === 0) return pendingGameEvents;
-  return pendingGameEvents.splice(0, pendingGameEvents.length);
-}
 
 export function clearOrbitalTracking(): void {
   orbitalSpawned.clear();
@@ -68,43 +61,43 @@ export const WeaponSystem: System = {
       switch (weapon.pattern) {
         case AttackPattern.SingleProjectile:
           fireProjectile(world, wo.owner, ownerTransform, weapon);
-          playSound('fire_projectile', px, py, isCaster);
+          playSyncedSound('fire_projectile', px, py, isCaster);
           break;
         case AttackPattern.Spread:
           fireSpread(world, wo.owner, ownerTransform, weapon);
-          playSound('fire_spread', px, py, isCaster);
+          playSyncedSound('fire_spread', px, py, isCaster);
           break;
         case AttackPattern.Sweep:
           fireSweep(world, wo.owner, ownerTransform, weapon);
-          playSound('fire_sweep', px, py);
+          playSyncedSound('fire_sweep', px, py);
           break;
         case AttackPattern.Nova:
           fireNova(world, wo.owner, ownerTransform, weapon);
-          playSound('fire_nova', px, py, isCaster);
+          playSyncedSound('fire_nova', px, py, isCaster);
           break;
         case AttackPattern.Chain:
           fireChain(world, wo.owner, ownerTransform, weapon);
-          playSound('fire_chain', px, py);
+          playSyncedSound('fire_chain', px, py);
           break;
         case AttackPattern.Boomerang:
           fireBoomerang(world, wo.owner, ownerTransform, weapon);
-          playSound('fire_boomerang', px, py);
+          playSyncedSound('fire_boomerang', px, py);
           break;
         case AttackPattern.GroundZone:
           fireGroundZone(world, wo.owner, ownerTransform, weapon);
-          playSound('fire_ground_zone', px, py);
+          playSyncedSound('fire_ground_zone', px, py);
           break;
         case AttackPattern.RunicBarrage:
           fireRunicBarrage(world, wo.owner, ownerTransform, weapon);
-          playSound('fire_runic', px, py);
+          playSyncedSound('fire_runic', px, py);
           break;
         case AttackPattern.Beam:
           fireBeam(world, wo.owner, ownerTransform, weapon);
-          playSound('fire_beam', px, py);
+          playSyncedSound('fire_beam', px, py);
           break;
         case AttackPattern.Spiral:
           fireSpiral(world, wo.owner, ownerTransform, weapon);
-          playSound('fire_spiral', px, py);
+          playSyncedSound('fire_spiral', px, py);
           break;
       }
     }
@@ -334,7 +327,7 @@ function fireChain(world: World, owner: number, transform: Transform, weapon: We
 
     // Spawn beam FX
     spawnBeamFx(currentPos.x, currentPos.y, targetPos.x, targetPos.y, 0.15);
-    pendingGameEvents.push({ type: 'beam', x0: currentPos.x, y0: currentPos.y, x1: targetPos.x, y1: targetPos.y });
+    emitRunEvent({ type: 'beam', x0: currentPos.x, y0: currentPos.y, x1: targetPos.x, y1: targetPos.y });
 
     currentPos = targetPos;
   }
@@ -432,8 +425,8 @@ function fireRunicBarrage(world: World, owner: number, transform: Transform, wea
 
   for (let i = 0; i < count; i++) {
     // Random position within range of target
-    const angle = Math.random() * Math.PI * 2;
-    const dist = Math.random() * weapon.projectileRadius * 0.8;
+    const angle = simRange(0, Math.PI * 2);
+    const dist = simRange(0, weapon.projectileRadius * 0.8);
     const x = weapon.target.x + Math.cos(angle) * dist;
     const y = weapon.target.y + Math.sin(angle) * dist;
 
@@ -553,7 +546,7 @@ function fireBeam(world: World, owner: number, transform: Transform, weapon: Wea
       spawnDamageNumber(world, t.pos.x, t.pos.y - (tc?.radius ?? 10), dmg);
     }
     spawnBeamFx(transform.pos.x, transform.pos.y, t.pos.x, t.pos.y, 0.12);
-    pendingGameEvents.push({ type: 'beam', x0: transform.pos.x, y0: transform.pos.y, x1: t.pos.x, y1: t.pos.y });
+    emitRunEvent({ type: 'beam', x0: transform.pos.x, y0: transform.pos.y, x1: t.pos.x, y1: t.pos.y });
   }
 }
 

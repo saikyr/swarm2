@@ -66,15 +66,11 @@ export class SnapshotManager {
   }
 
   applySnapshot(snapshot: SnapshotData): void {
-    const existingEntities = new Set<number>();
-
     // Track which entities are in the snapshot
     const snapshotEntityIds = new Set(snapshot.entities.map(e => e.id));
 
     // Update or create entities from snapshot
     for (const se of snapshot.entities) {
-      existingEntities.add(se.id);
-
       // Ensure entity exists
       if (!this.world.hasEntity(se.id)) {
         this.world.createEntityWithId(se.id);
@@ -93,6 +89,13 @@ export class SnapshotManager {
         // Don't destroy local-only particle/damage-number entities
         if (this.world.hasComponent(entity, PARTICLE)) continue;
         if (this.world.hasComponent(entity, DAMAGE_NUMBER)) continue;
+        this.world.destroyEntity(entity);
+      }
+    }
+
+    // Remove non-transform replicated entities (e.g. weapons) that disappeared.
+    for (const entity of this.world.query(WEAPON)) {
+      if (!snapshotEntityIds.has(entity)) {
         this.world.destroyEntity(entity);
       }
     }

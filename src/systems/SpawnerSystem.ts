@@ -4,8 +4,9 @@ import { TRANSFORM, VELOCITY, HEALTH, COLLIDER, RENDERABLE, ENEMY, PLAYER } from
 import type { Transform, Velocity, Health, Collider, Renderable, Enemy } from '../components';
 import { CollisionLayer } from '../components';
 import { EnemyType, EnemyAIState, EliteAffix, ENEMY_SPAWN_DISTANCE_MIN, ENEMY_SPAWN_DISTANCE_MAX } from '../constants';
-import { randomRange, TAU } from '../utils/math';
+import { TAU } from '../utils/math';
 import type { RunContext } from '../game/run';
+import { simChance, simInt, simPick, simRandom, simRange } from '../sim-core/random';
 
 export let runRef: RunContext | null = null;
 export function setRunRef(r: RunContext): void { runRef = r; }
@@ -26,7 +27,7 @@ const ELITE_NAMES_BY_TYPE: Record<EnemyType, string[]> = {
 
 function generateEliteName(type: EnemyType): string {
   const names = ELITE_NAMES_BY_TYPE[type];
-  return names[Math.floor(Math.random() * names.length)];
+  return simPick(names);
 }
 
 interface EnemyDef {
@@ -66,7 +67,7 @@ export const SpawnerSystem: System = {
     const playerCount = players.length;
 
     // Pick a random player to spawn around
-    const randomPlayer = players[Math.floor(Math.random() * playerCount)];
+    const randomPlayer = players[simInt(0, playerCount - 1)];
     const playerT = world.getComponent<Transform>(randomPlayer, TRANSFORM)!;
 
     runRef.timer += dt;
@@ -109,7 +110,7 @@ export const SpawnerSystem: System = {
       const type = pickEnemyType(minutes);
       // At most one elite per spawn batch, and respect the cooldown timer
       const canSpawnElite = !eliteSpawnedThisBatch && eliteSpawnCooldown <= 0;
-      const isChampion = canSpawnElite && minutes >= 3 && Math.random() < 0.01;
+      const isChampion = canSpawnElite && minutes >= 3 && simChance(0.01);
       const isElite = isChampion || (canSpawnElite && shouldSpawnElite(minutes));
       const affixes = isElite ? pickAffixes(minutes) : [];
 
@@ -125,7 +126,7 @@ export const SpawnerSystem: System = {
 };
 
 function pickEnemyType(minutes: number): EnemyType {
-  const r = Math.random();
+  const r = simRandom();
   if (minutes < 0.5) return EnemyType.Swarm;
   if (minutes < 1.5) return r < 0.7 ? EnemyType.Swarm : EnemyType.Dasher;
   if (minutes < 4) {
@@ -157,17 +158,17 @@ function shouldSpawnElite(minutes: number): boolean {
   if (minutes < 0.5) return false;
   // Logarithmic curve: quick early introduction, then gradual plateau at ~12%
   const chance = Math.min(0.12, 0.01 + 0.06 * (1 - Math.exp(-minutes * 0.25)));
-  return Math.random() < chance;
+  return simChance(chance);
 }
 
 function pickAffixes(minutes: number): EliteAffix[] {
   const allAffixes = Object.values(EliteAffix);
   const maxCount = minutes < 5 ? 1 : minutes < 8 ? 2 : 3;
-  const count = 1 + Math.floor(Math.random() * maxCount);
+  const count = 1 + simInt(0, maxCount - 1);
   const chosen: EliteAffix[] = [];
   const available = [...allAffixes];
   for (let i = 0; i < count && available.length > 0; i++) {
-    const idx = Math.floor(Math.random() * available.length);
+    const idx = simInt(0, available.length - 1);
     chosen.push(available[idx]);
     available.splice(idx, 1);
   }
@@ -180,8 +181,8 @@ function spawnEnemy(
   hpMultiplier = 1
 ): void {
   const def = ENEMY_DEFS[type];
-  const angle = Math.random() * TAU;
-  const dist = randomRange(ENEMY_SPAWN_DISTANCE_MIN, ENEMY_SPAWN_DISTANCE_MAX);
+  const angle = simRange(0, TAU);
+  const dist = simRange(ENEMY_SPAWN_DISTANCE_MIN, ENEMY_SPAWN_DISTANCE_MAX);
   const x = playerX + Math.cos(angle) * dist;
   const y = playerY + Math.sin(angle) * dist;
 
@@ -257,8 +258,8 @@ export function spawnMinionSwarm(
   world: World, x: number, y: number, ownerEntity: number, hpScale = 1
 ): void {
   const def = ENEMY_DEFS[EnemyType.Swarm];
-  const offsetX = (Math.random() - 0.5) * 30;
-  const offsetY = (Math.random() - 0.5) * 30;
+  const offsetX = (simRandom() - 0.5) * 30;
+  const offsetY = (simRandom() - 0.5) * 30;
 
   let hp = def.hp * hpScale;
   const waveScale = runRef ? 1 + (runRef.wave - 1) * 0.15 : 1;

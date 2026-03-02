@@ -1,6 +1,6 @@
 import { World } from '../ecs/ecs';
 import { setupCanvas, type CanvasContext } from '../rendering/canvas';
-import { createScreenShake, updateScreenShake, createHitPause, updateHitPause, type ScreenShake, type HitPause } from '../rendering/effects';
+import { createScreenShake, updateScreenShake, createHitPause, updateHitPause, addScreenShake, triggerHitPause, type ScreenShake, type HitPause } from '../rendering/effects';
 import { createRunContext, type RunContext } from './run';
 import { createGameStateManager, changeState, type GameStateManager } from './game-state';
 import { loadMeta, saveMeta, type MetaProgression } from './meta-progression';
@@ -22,7 +22,7 @@ import { InputSystem, setInputLocalPlayerId, getKeyboardInput } from '../systems
 import { PlayerMovementSystem } from '../systems/PlayerMovementSystem';
 import { EnemyAISystem } from '../systems/EnemyAISystem';
 import { TargetingSystem } from '../systems/TargetingSystem';
-import { WeaponSystem, clearOrbitalTracking, drainGameEvents } from '../systems/WeaponSystem';
+import { WeaponSystem, clearOrbitalTracking } from '../systems/WeaponSystem';
 import { MovementSystem } from '../systems/MovementSystem';
 import { ProjectileSystem } from '../systems/ProjectileSystem';
 import { OrbitalSystem } from '../systems/OrbitalSystem';
@@ -42,12 +42,23 @@ import { ReviveSystem } from '../systems/ReviveSystem';
 // Networking
 import { NetClient } from '../net/client';
 import { NetHost } from '../net/host';
-import { MessageType, type NetMessage, type RoomCreatedMsg, type JoinedRoomMsg, type PlayerJoinedMsg, type PlayerLeftMsg, type StartGameMsg, type SnapshotMsg, type UpgradeOptionsMsg, type UpgradeResolvedMsg, type GameOverMsg, type RoomErrorMsg, type PauseMsg } from '../net/messages';
+import { MessageType, type NetMessage, type RoomCreatedMsg, type JoinedRoomMsg, type PlayerJoinedMsg, type PlayerLeftMsg, type StartGameMsg, type UpgradeOptionsMsg, type UpgradeResolvedMsg, type GameOverMsg, type RoomErrorMsg, type PauseMsg } from '../net/messages';
 import { createLobby, type Lobby } from './lobby';
 import { SnapshotManager, type SnapshotData } from '../net/snapshot';
-import { Interpolator } from '../net/interpolation';
 import { ClientEffectReactor } from '../net/client-effects';
 import { setEntityIdOffset } from '../ecs/entity';
+import { NETCODE_V2_DELTAS_ENABLED, NETCODE_V2_PREDICTION_ENABLED, NETCODE_V2_RECONCILE_TICK_V2 } from '../net-v2/flags';
+import { PROTOCOL_V2, type EnvelopeV2, type InputFrameV2, type RunEventV2, type SnapshotV2, isEnvelopeV2 } from '../net-v2/protocol';
+import { validateInputFrameV2, validateUpgradePickV2 } from '../net-v2/schemas';
+import { createViewerSnapshotV2 } from '../net-v2/serialize';
+import { buildDeltaSnapshot } from '../net-v2/delta';
+import { NetClock } from '../net-v2/clock';
+import { ReplicaStore } from '../client-net-v2/replica-store';
+import { LocalPrediction } from '../client-net-v2/prediction';
+import { findAckForPlayer } from '../client-net-v2/reconcile';
+import { directionClass, netDebug } from '../debug/net-debug';
+import { clearSimulationSeed, setSimulationSeed } from '../sim-core/random';
+import { clearRunEvents, drainRunEvents, setRunEventBroadcastEnabled } from '../sim-core/events';
 import { initAudio, unlockAudio, playSound, suspendAudio, resumeAudio, startAmbientDrone, updateAmbientDrone, stopAmbientDrone } from '../audio/audio';
 import { spawnBeamFx } from '../rendering/particles';
 import { DAMAGE_NUMBER_RISE_SPEED } from '../constants';
@@ -86,11 +97,28 @@ export class Game {
   private netHost: NetHost | null = null;
   private lobby: Lobby = createLobby();
   private snapshotMgr: SnapshotManager | null = null;
-  private interpolator: Interpolator | null = null;
-  private snapshotInterval = 1 / 30; // 30Hz
+  private snapshotInterval = 1 / 20; // 20Hz snapshots
   private snapshotTimer = 0;
-  private prevRawSnapshot: SnapshotData | null = null;
-  private clientReactor = new ClientEffectReactor();
+  private simTick = 0; // authoritative fixed-tick counter (host/solo)
+  private netClock = new NetClock();
+  private replicaStore: ReplicaStore | null = null;
+  private prediction: LocalPrediction | null = null;
+  private inputSeqByPlayer = new Map<number, number>(); // host-side ack state
+  private lastClientTickByPlayer = new Map<number, number>();
+  private v2PrevByPlayer = new Map<number, SnapshotV2>();
+  private clientTick = 0;
+  private predictionStepAccumulator = 0;
+  private lastPingAt = 0;
+  private lastAppliedSnapshotTickV2 = -1;
+  private lastAuthoritativeDashCooldown = 0;
+  private lastAuthoritativeWeaponCooldownAvg = 0;
+  private lastAuthoritativeWeaponCooldownByEntity = new Map<number, number>();
+  private hostSnapshotBuildMs: number[] = [];
+  private hostPayloadBytes: number[] = [];
+  private clientApplyMs: number[] = [];
+  private netMetricsLastLogAt = 0;
+  private readonly clientEffectReactor = new ClientEffectReactor();
+  private prevClientSnapshot: SnapshotData | null = null;
 
   // Upgrade flow for multiplayer (simultaneous picking)
   private upgradingPlayerId = -1; // solo/client: which player is upgrading
@@ -110,6 +138,7 @@ export class Game {
     this.run = createRunContext();
     this.stateMgr = createGameStateManager();
     this.meta = loadMeta();
+    this.updateNetDebugSession();
 
     initAudio();
     this.registerComponents();
@@ -399,11 +428,27 @@ export class Game {
   startGame(configs: PlayerConfig[]): void {
     this.world.clear();
     clearOrbitalTracking();
+    clearRunEvents();
+    setRunEventBroadcastEnabled(this.networkRole === 'host');
     this.run = createRunContext();
+    setSimulationSeed(this.run.seed);
     setRunRef(this.run);
     resetCamera();
 
     this.playerData = spawnPlayers(this.world, configs, this.meta);
+    this.simTick = 0;
+    this.inputSeqByPlayer.clear();
+    this.lastClientTickByPlayer.clear();
+    this.v2PrevByPlayer.clear();
+    this.hostSnapshotBuildMs.length = 0;
+    this.hostPayloadBytes.length = 0;
+    this.clientApplyMs.length = 0;
+    this.predictionStepAccumulator = 0;
+    this.netMetricsLastLogAt = performance.now();
+    this.lastAuthoritativeDashCooldown = 0;
+    this.lastAuthoritativeWeaponCooldownAvg = 0;
+    this.lastAuthoritativeWeaponCooldownByEntity.clear();
+    this.prevClientSnapshot = null;
 
     // Set local player for camera and input
     setLocalPlayerId(this.localPlayerId);
@@ -431,6 +476,9 @@ export class Game {
   private startClientGame(): void {
     this.world.clear();
     clearOrbitalTracking();
+    clearRunEvents();
+    setRunEventBroadcastEnabled(false);
+    clearSimulationSeed();
     setEntityIdOffset(1000000);
     this.run = createRunContext();
     setRunRef(this.run);
@@ -451,8 +499,20 @@ export class Game {
     camera.targetX = WORLD_WIDTH / 2;
     camera.targetY = WORLD_HEIGHT / 2;
 
-    this.interpolator = new Interpolator();
     this.snapshotMgr = new SnapshotManager(this.world);
+    this.replicaStore = new ReplicaStore();
+    this.replicaStore.setLocalPlayerId(this.localPlayerId);
+    this.prediction = new LocalPrediction();
+    this.clientTick = 0;
+    this.predictionStepAccumulator = 0;
+    this.lastPingAt = 0;
+    this.lastAppliedSnapshotTickV2 = -1;
+    this.clientApplyMs.length = 0;
+    this.netMetricsLastLogAt = performance.now();
+    this.lastAuthoritativeDashCooldown = 0;
+    this.lastAuthoritativeWeaponCooldownAvg = 0;
+    this.lastAuthoritativeWeaponCooldownByEntity.clear();
+    this.prevClientSnapshot = null;
 
     changeState(this.stateMgr, GameState.Playing);
   }
@@ -531,15 +591,15 @@ export class Game {
 
       // Send cards to remote player
       if (playerId !== this.localPlayerId && this.netHost) {
-        this.netHost.sendToPlayer(playerId, {
-          type: MessageType.UpgradeOptions,
+        const payload = {
           playerId,
           cards: cards.map((c, i) => ({
             index: i, id: c.id, name: c.name, description: c.description,
             rarity: c.rarity, cardType: c.type, weaponId: c.weaponId, weaponName: c.weaponName,
             overclockTier: c.overclockTier,
           })),
-        });
+        };
+        this.sendV2Envelope('s_upgrade_options', payload, playerId);
       }
 
       changeState(this.stateMgr, GameState.Upgrading);
@@ -552,9 +612,7 @@ export class Game {
 
     // Only broadcast UpgradeResolved and resume when ALL players are done
     if (this.pendingUpgrades.size === 0) {
-      if (this.netHost) {
-        this.netHost.broadcast({ type: MessageType.UpgradeResolved, playerId });
-      }
+      this.sendV2Envelope('s_upgrade_resolved', { playerId });
       if (this.stateMgr.current === GameState.Upgrading) {
         changeState(this.stateMgr, GameState.Playing);
       }
@@ -596,7 +654,7 @@ export class Game {
     }
 
     if (this.networkRole === 'client' && this.netClient) {
-      this.netClient.send({ type: MessageType.UpgradePick, playerId: this.localPlayerId, cardIndex: index });
+      this.sendV2Envelope('c_upgrade_pick', { playerId: this.localPlayerId, cardIndex: index });
       this.upgradingPlayerId = -1; // Show waiting screen until UpgradeResolved
       return;
     }
@@ -635,15 +693,25 @@ export class Game {
 
   // === Networking ===
 
+  private updateNetDebugSession(): void {
+    netDebug.setSession({
+      role: this.networkRole,
+      roomCode: this.lobby.roomCode || 'none',
+      playerId: this.localPlayerId,
+    });
+  }
+
   private async createRoom(): Promise<void> {
     this.networkRole = 'host';
     this.localPlayerId = 0;
     this.lobbyError = '';
+    this.updateNetDebugSession();
 
     try {
       this.netClient = new NetClient();
       await this.netClient.connect(this.getRelayUrl());
       this.setupNetworkHandlers();
+      this.sendV2Envelope('c_hello', { protocol: PROTOCOL_V2, nickname: 'Pilot' });
       this.netClient.send({ type: MessageType.CreateRoom });
     } catch {
       this.lobbyError = 'Failed to connect to server';
@@ -654,11 +722,13 @@ export class Game {
   private async joinRoom(code: string): Promise<void> {
     this.networkRole = 'client';
     this.lobbyError = '';
+    this.updateNetDebugSession();
 
     try {
       this.netClient = new NetClient();
       await this.netClient.connect(this.getRelayUrl());
       this.setupNetworkHandlers();
+      this.sendV2Envelope('c_hello', { protocol: PROTOCOL_V2, nickname: 'Pilot' });
       this.netClient.send({ type: MessageType.JoinRoom, roomCode: code });
     } catch {
       this.lobbyError = 'Failed to connect to server';
@@ -687,6 +757,11 @@ export class Game {
     if (!this.netClient) return;
 
     this.netClient.onMessage = (msg: NetMessage) => {
+      if (isEnvelopeV2(msg)) {
+        this.onV2Envelope(msg);
+        return;
+      }
+
       switch (msg.type) {
         case MessageType.RoomCreated:
           this.onRoomCreated(msg as RoomCreatedMsg);
@@ -705,12 +780,6 @@ export class Game {
           break;
         case MessageType.ClassSelect:
           this.onNetClassSelect(msg as any);
-          break;
-        case MessageType.Input:
-          this.onNetInput(msg as any);
-          break;
-        case MessageType.Snapshot:
-          this.onNetSnapshot(msg as SnapshotMsg);
           break;
         case MessageType.UpgradeOptions:
           this.onNetUpgradeOptions(msg as UpgradeOptionsMsg);
@@ -746,6 +815,7 @@ export class Game {
     this.lobby.roomCode = msg.roomCode;
     this.localPlayerId = msg.playerId;
     this.lobby.players = [{ playerId: msg.playerId, ready: false }];
+    this.updateNetDebugSession();
     changeState(this.stateMgr, GameState.ClassSelect);
   }
 
@@ -753,6 +823,7 @@ export class Game {
     this.lobby.roomCode = msg.roomCode;
     this.localPlayerId = msg.playerId;
     this.lobby.players = msg.players.map((p: any) => ({ playerId: p.playerId, ready: false }));
+    this.updateNetDebugSession();
     changeState(this.stateMgr, GameState.ClassSelect);
   }
 
@@ -788,47 +859,6 @@ export class Game {
     this.lobby.classSelections.set(msg.playerId, msg.classType);
     const p = this.lobby.players.find(p => p.playerId === msg.playerId);
     if (p) p.ready = true;
-  }
-
-  private onNetInput(msg: { playerId: number; input: { moveX: number; moveY: number; dash: boolean; ability: boolean } }): void {
-    if (this.networkRole !== 'host') return;
-    const pd = this.playerData.get(msg.playerId);
-    if (!pd) return;
-    const input = this.world.getComponent<any>(pd.entity, INPUT);
-    if (input) {
-      input.moveX = msg.input.moveX;
-      input.moveY = msg.input.moveY;
-      input.dash = msg.input.dash;
-      input.ability = msg.input.ability;
-    }
-  }
-
-  private onNetSnapshot(msg: SnapshotMsg): void {
-    if (this.networkRole !== 'client') return;
-
-    // React to raw snapshot diffs (damage numbers, death particles, etc.)
-    const rawSnapshot = msg.snapshot as SnapshotData;
-    this.clientReactor.reactToSnapshot(
-      this.prevRawSnapshot, rawSnapshot, this.world, this.screenShake, this.hitPause,
-    );
-    this.prevRawSnapshot = rawSnapshot;
-
-    // Handle beam events from host
-    if (msg.events) {
-      for (const ev of msg.events) {
-        if (ev.type === 'beam') {
-          spawnBeamFx(ev.x0, ev.y0, ev.x1, ev.y1, 0.15);
-        }
-      }
-    }
-
-    if (this.interpolator) {
-      this.interpolator.pushSnapshot(msg.snapshot, msg.tick);
-    }
-    // Update run timer from host tick
-    if (typeof msg.tick === 'number') {
-      this.run.timer = msg.tick;
-    }
   }
 
   private onNetUpgradeOptions(msg: UpgradeOptionsMsg): void {
@@ -867,16 +897,15 @@ export class Game {
           const ocCards = generateOverclockCards(w);
           if (ocCards.length > 0) {
             this.pendingUpgrades.set(msg.playerId, ocCards);
-            if (this.netHost) {
-              this.netHost.sendToPlayer(msg.playerId, {
-                type: MessageType.UpgradeOptions, playerId: msg.playerId,
-                cards: ocCards.map((c, i) => ({
-                  index: i, id: c.id, name: c.name, description: c.description,
-                  rarity: c.rarity, cardType: c.type, weaponName: c.weaponName,
-                  overclockTier: c.overclockTier,
-                })),
-              });
-            }
+            const payload = {
+              playerId: msg.playerId,
+              cards: ocCards.map((c, i) => ({
+                index: i, id: c.id, name: c.name, description: c.description,
+                rarity: c.rarity, cardType: c.type, weaponName: c.weaponName,
+                overclockTier: c.overclockTier,
+              })),
+            };
+            this.sendV2Envelope('s_upgrade_options', payload, msg.playerId);
             return; // Wait for next pick
           }
           break;
@@ -943,6 +972,220 @@ export class Game {
     }
   }
 
+  private onV2Envelope(msg: EnvelopeV2): void {
+    switch (msg.t) {
+      case 'c_input': {
+        if (this.networkRole !== 'host') return;
+        const parsed = validateInputFrameV2(msg.payload);
+        if (!parsed) return;
+        this.onNetInputV2(parsed);
+        return;
+      }
+      case 'c_upgrade_pick': {
+        if (this.networkRole !== 'host') return;
+        const parsed = validateUpgradePickV2(msg.payload);
+        if (!parsed) return;
+        this.onNetUpgradePick(parsed);
+        return;
+      }
+      case 's_snapshot': {
+        if (this.networkRole !== 'client') return;
+        this.onNetSnapshotV2(msg.payload as SnapshotV2);
+        return;
+      }
+      case 's_run_start': {
+        if (this.networkRole === 'client' && this.stateMgr.current !== GameState.Playing) {
+          this.startClientGame();
+        }
+        return;
+      }
+      case 's_room_state': {
+        const payload = msg.payload as { roomCode?: string; players?: Array<{ playerId: number }>; state?: string };
+        if (payload.roomCode) {
+          this.lobby.roomCode = payload.roomCode;
+          this.updateNetDebugSession();
+        }
+        if (payload.players) {
+          this.lobby.players = payload.players.map((p) => ({ playerId: p.playerId, ready: false }));
+        }
+        if (payload.state === 'ended' && this.stateMgr.current === GameState.Playing) {
+          this.onNetGameOver({ type: MessageType.GameOver });
+        }
+        return;
+      }
+      case 's_hello': {
+        return;
+      }
+      case 's_upgrade_options': {
+        this.onNetUpgradeOptions({
+          type: MessageType.UpgradeOptions,
+          playerId: (msg.payload as any).playerId,
+          cards: (msg.payload as any).cards,
+        });
+        return;
+      }
+      case 's_upgrade_resolved': {
+        this.onNetUpgradeResolved({ type: MessageType.UpgradeResolved, playerId: (msg.payload as any).playerId });
+        return;
+      }
+      case 's_run_end': {
+        const payload = msg.payload as { reason?: string };
+        if (payload.reason === 'host_left') {
+          this.lobbyError = 'Host disconnected';
+        } else if (payload.reason === 'all_downed') {
+          this.lobbyError = 'Party downed';
+        } else if (payload.reason) {
+          this.lobbyError = `Run ended: ${payload.reason}`;
+        }
+        console.warn('[net-v2] run ended', payload.reason ?? 'unknown');
+        this.onNetGameOver({ type: MessageType.GameOver });
+        return;
+      }
+      case 's_pong': {
+        const sentAt = Number((msg.payload as any)?.t ?? 0);
+        if (sentAt > 0) this.netClock.markPong(sentAt, performance.now());
+        return;
+      }
+      case 's_error': {
+        const payload = msg.payload as { message?: string };
+        this.lobbyError = payload.message ?? 'Network error';
+        return;
+      }
+    }
+  }
+
+  private onNetInputV2(frame: InputFrameV2): void {
+    if (this.networkRole !== 'host') return;
+    const lastSeq = this.inputSeqByPlayer.get(frame.playerId) ?? 0;
+    if (frame.seq <= lastSeq) return; // out of order / duplicate
+    if (frame.seq - lastSeq > 120) return; // guardrail: unreasonable queue jump
+
+    const lastClientTick = this.lastClientTickByPlayer.get(frame.playerId) ?? frame.clientTick;
+    if (frame.clientTick < lastClientTick - 10) return; // stale rewind spam
+    this.lastClientTickByPlayer.set(frame.playerId, frame.clientTick);
+    this.inputSeqByPlayer.set(frame.playerId, frame.seq);
+
+    const pd = this.playerData.get(frame.playerId);
+    if (!pd) return;
+    const input = this.world.getComponent<any>(pd.entity, INPUT);
+    if (!input) return;
+
+    input.moveX = frame.moveX;
+    input.moveY = frame.moveY;
+    input.dash = (frame.buttons & 1) !== 0;
+    input.ability = (frame.buttons & 2) !== 0;
+    netDebug.log({
+      kind: 'host_input_applied',
+      ts: Date.now(),
+      playerId: frame.playerId,
+      seq: frame.seq,
+      clientTick: frame.clientTick,
+      moveX: frame.moveX,
+      moveY: frame.moveY,
+      buttons: frame.buttons,
+    });
+  }
+
+  private onNetSnapshotV2(snapshot: SnapshotV2): void {
+    if (this.networkRole !== 'client') return;
+    if (!this.replicaStore || !this.snapshotMgr) return;
+    if (snapshot.serverTick <= this.lastAppliedSnapshotTickV2) return;
+    if (!snapshot.full && this.lastAppliedSnapshotTickV2 >= 0 && snapshot.baselineTick !== this.lastAppliedSnapshotTickV2) {
+      return;
+    }
+
+    const now = performance.now();
+    this.netClock.markSnapshotReceive(now);
+    const ackSeq = findAckForPlayer(snapshot.ack, this.localPlayerId);
+    netDebug.log({
+      kind: 'snapshot_received',
+      ts: Date.now(),
+      serverTick: snapshot.serverTick,
+      baselineTick: snapshot.baselineTick,
+      full: snapshot.full,
+      ackSeq,
+      queueDepth: this.prediction?.getPendingCount() ?? 0,
+    });
+
+    const applyStart = performance.now();
+    const worldSnap = this.replicaStore.applySnapshot(snapshot, now);
+    this.snapshotMgr.applySnapshot(worldSnap);
+    this.world.flushDestroy();
+    this.clientEffectReactor.reactToSnapshot(
+      this.prevClientSnapshot,
+      worldSnap,
+      this.world,
+      this.screenShake,
+      this.hitPause,
+    );
+    this.prevClientSnapshot = worldSnap;
+    const applyMs = performance.now() - applyStart;
+    this.pushMetric(this.clientApplyMs, applyMs, 256);
+    if (applyMs > 4) {
+      console.debug(`[net-v2] high apply cost: ${applyMs.toFixed(2)}ms`);
+    }
+    netDebug.log({
+      kind: 'snapshot_applied',
+      ts: Date.now(),
+      applyMs,
+      entityCount: this.world.entityCount(),
+      removedCount: this.replicaStore.getLastRemovedCount(),
+    });
+
+    for (const ev of snapshot.events) {
+      switch (ev.type) {
+        case 'beam':
+          spawnBeamFx(ev.x0, ev.y0, ev.x1, ev.y1, 0.15);
+          break;
+        case 'sfx':
+          playSound(ev.event, ev.x, ev.y, !!ev.isCaster);
+          break;
+        case 'shake':
+          addScreenShake(this.screenShake, ev.amount);
+          break;
+        case 'hit_pause':
+          triggerHitPause(this.hitPause, ev.duration);
+          break;
+      }
+    }
+
+    const authState = this.replicaStore.getAuthoritativePlayerState(this.localPlayerId);
+    this.captureAuthoritativeCooldowns(snapshot);
+    if (this.prediction && authState && ackSeq >= 0) {
+      this.prediction.ingestAuthoritativeSample({
+        x: authState.x,
+        y: authState.y,
+        ackSeq,
+        receivedAtMs: now,
+      });
+    }
+    this.pinLocalPrevToPos();
+
+    this.run.timer = snapshot.elapsedSec;
+    this.lastAppliedSnapshotTickV2 = snapshot.serverTick;
+  }
+
+  private sendV2Envelope(type: EnvelopeV2['t'], payload: unknown, targetPlayerId?: number): void {
+    if (!this.netClient) return;
+    const msg: EnvelopeV2 = {
+      v: PROTOCOL_V2,
+      t: type,
+      room: this.lobby.roomCode,
+      ts: Date.now(),
+      payload,
+      targetPlayerId,
+    };
+    this.netClient.send(msg as unknown as NetMessage);
+  }
+
+  private buildV2AckState(): Array<{ playerId: number; lastSeq: number }> {
+    const out: Array<{ playerId: number; lastSeq: number }> = [];
+    for (const p of this.lobby.players) {
+      out.push({ playerId: p.playerId, lastSeq: this.inputSeqByPlayer.get(p.playerId) ?? 0 });
+    }
+    return out;
+  }
+
   private allPlayersReady(): boolean {
     for (const p of this.lobby.players) {
       if (!this.lobby.classSelections.has(p.playerId)) return false;
@@ -961,15 +1204,22 @@ export class Game {
 
     this.netHost = new NetHost(this.netClient!);
     this.snapshotMgr = new SnapshotManager(this.world);
+    this.v2PrevByPlayer.clear();
+    this.inputSeqByPlayer.clear();
+    this.lastClientTickByPlayer.clear();
 
     // Send start game to all clients
     this.netHost.broadcast({ type: MessageType.StartGame, configs });
+    this.sendV2Envelope('s_run_start', { configs, seed: this.run.seed, startTick: this.simTick });
 
     // Host runs the full game
     this.startGame(configs);
   }
 
   private disconnectNetwork(): void {
+    clearSimulationSeed();
+    clearRunEvents();
+    setRunEventBroadcastEnabled(false);
     if (this.netClient) {
       this.netClient.disconnect();
       this.netClient = null;
@@ -979,8 +1229,27 @@ export class Game {
     this.localPlayerId = 0;
     this.lobby = createLobby();
     this.lobbyMode = 'menu';
-    this.interpolator = null;
     this.snapshotMgr = null;
+    this.replicaStore = null;
+    this.prediction = null;
+    this.v2PrevByPlayer.clear();
+    this.inputSeqByPlayer.clear();
+    this.lastClientTickByPlayer.clear();
+    this.simTick = 0;
+    this.clientTick = 0;
+    this.predictionStepAccumulator = 0;
+    this.lastPingAt = 0;
+    this.lastAppliedSnapshotTickV2 = -1;
+    this.lastAuthoritativeDashCooldown = 0;
+    this.lastAuthoritativeWeaponCooldownAvg = 0;
+    this.lastAuthoritativeWeaponCooldownByEntity.clear();
+    this.prevClientSnapshot = null;
+    this.hostSnapshotBuildMs.length = 0;
+    this.hostPayloadBytes.length = 0;
+    this.clientApplyMs.length = 0;
+    this.netMetricsLastLogAt = 0;
+    this.netClock = new NetClock();
+    this.updateNetDebugSession();
   }
 
   // === Game Loop ===
@@ -999,18 +1268,38 @@ export class Game {
 
     if (state === GameState.Playing || state === GameState.Paused || (state === GameState.Upgrading && this.networkRole === 'client')) {
       if (this.networkRole === 'client') {
-        if (this.interpolator && this.snapshotMgr) {
-          this.interpolator.update(rawDt);
+        this.maybeSendPing();
 
-          // Apply interpolated snapshot for ALL entities (pure interpolation, no prediction)
-          const snapshot = this.interpolator.getInterpolated();
-          if (snapshot) {
-            this.snapshotMgr.applySnapshot(snapshot);
-            this.world.flushDestroy();
+        // Send input during Playing
+        if (state === GameState.Playing) {
+          const liveInput = getKeyboardInput();
+          const buttons = (liveInput.dash ? 1 : 0) | (liveInput.ability ? 2 : 0);
+          netDebug.logSample('input_sample', {
+            kind: 'input_sample',
+            ts: Date.now(),
+            dt: rawDt,
+            moveX: liveInput.moveX,
+            moveY: liveInput.moveY,
+            buttons,
+            direction: directionClass(liveInput.moveX, liveInput.moveY),
+          });
+
+          this.predictionStepAccumulator += rawDt;
+          let steps = 0;
+          const localFixedDt = 1 / 60;
+          while (this.predictionStepAccumulator >= localFixedDt && steps < 8) {
+            this.predictionStepAccumulator -= localFixedDt;
+            this.stepLocalInputFrame(liveInput);
+            if (this.prediction && NETCODE_V2_PREDICTION_ENABLED && NETCODE_V2_RECONCILE_TICK_V2) {
+              this.prediction.tickReconcile(this.world, this.localPlayerId, localFixedDt, performance.now());
+            }
+            steps++;
           }
+
+          this.smoothLocalHudState(rawDt);
         }
 
-        // Update local player trail (CleanupSystem only runs on host)
+        // Keep local trail responsive between snapshots.
         for (const entity of this.world.query(TRAIL, TRANSFORM, PLAYER)) {
           const p = this.world.getComponent<Player>(entity, PLAYER)!;
           if (p.playerId === this.localPlayerId) {
@@ -1022,11 +1311,6 @@ export class Game {
           }
         }
 
-        // Send input during Playing
-        if (state === GameState.Playing) {
-          this.sendLocalInput(rawDt);
-        }
-
         // Tick client-only visual effects (particles, damage numbers, damage flash)
         ParticleSystem.update(this.world, rawDt);
         this.updateClientEffects(rawDt);
@@ -1034,6 +1318,7 @@ export class Game {
 
         // Update camera to follow local player
         this.updateClientCamera(rawDt);
+        this.pinLocalPrevToPos();
       } else if (state === GameState.Playing) {
         // Host or Solo: run full ECS simulation (only during Playing, not Paused)
         const paused = updateHitPause(this.hitPause, rawDt);
@@ -1042,6 +1327,8 @@ export class Game {
           let steps = 0;
           while (this.accumulator >= TICK_DT && steps < MAX_FRAME_SKIP) {
             this.world.update(TICK_DT);
+            this.simTick++;
+            this.logHostPlayerState();
             this.accumulator -= TICK_DT;
             steps++;
             // Stop ticking if a level-up (or other event) changed the state away from Playing.
@@ -1059,21 +1346,59 @@ export class Game {
       }
     }
 
-    // Host: broadcast snapshots at 30Hz — always, regardless of game state
+    // Host: broadcast snapshots at 20Hz — always, regardless of game state
     // (client needs up-to-date data even during Upgrading to avoid stale positions)
     if (this.networkRole === 'host' && this.netHost && this.snapshotMgr) {
       this.snapshotTimer += rawDt;
-      if (this.snapshotTimer >= this.snapshotInterval) {
-        this.snapshotTimer -= this.snapshotInterval;
-        const snapshot = this.snapshotMgr.createSnapshot();
-        const events = drainGameEvents();
-        const msg: any = {
-          type: MessageType.Snapshot,
-          tick: this.run.timer,
-          snapshot,
-        };
-        if (events.length > 0) msg.events = events;
-        this.netHost.broadcast(msg);
+      const interval = this.snapshotInterval;
+      if (this.snapshotTimer >= interval) {
+        this.snapshotTimer -= interval;
+
+        const events: RunEventV2[] = drainRunEvents(256);
+
+        const remotePlayers = this.lobby.players.map((p) => p.playerId).filter((id) => id !== this.localPlayerId);
+        for (const targetPlayerId of remotePlayers) {
+          const buildStart = performance.now();
+          const full = createViewerSnapshotV2(this.world, {
+            serverTick: this.simTick,
+            elapsedSec: this.run.timer,
+            viewerPlayerId: targetPlayerId,
+            ack: this.buildV2AckState(),
+            events,
+          });
+          const prev = this.v2PrevByPlayer.get(targetPlayerId) ?? null;
+          const forceFull = (this.simTick % 60) === 0;
+          const out = NETCODE_V2_DELTAS_ENABLED
+            ? buildDeltaSnapshot(full, prev, forceFull)
+            : { ...full, full: true, baselineTick: null };
+          const buildMs = performance.now() - buildStart;
+          const bytes = this.estimateV2EnvelopeBytes('s_snapshot', out, targetPlayerId);
+          this.pushMetric(this.hostSnapshotBuildMs, buildMs, 256);
+          this.v2PrevByPlayer.set(targetPlayerId, full);
+          this.pushMetric(this.hostPayloadBytes, bytes, 256);
+          netDebug.log({
+            kind: 'snapshot_built',
+            ts: Date.now(),
+            targetPlayerId,
+            full: out.full,
+            lanes: {
+              players: out.lanes.players.length,
+              enemies: out.lanes.enemies.length,
+              projectiles: out.lanes.projectiles.length,
+              pickups: out.lanes.pickups.length,
+              weapons: out.lanes.weapons.length,
+              effects: out.lanes.effects.length,
+            },
+            bytes,
+            buildMs,
+          });
+          this.sendV2Envelope('s_snapshot', out, targetPlayerId);
+        }
+        netDebug.log({
+          kind: 'ack_state',
+          ts: Date.now(),
+          values: this.buildV2AckState(),
+        });
       }
     }
 
@@ -1097,28 +1422,113 @@ export class Game {
       }
     }
 
+    this.maybeLogNetMetrics();
+
     this.renderFrame();
     this.mouseClicked = false;
 
     requestAnimationFrame((t) => this.loop(t));
   }
 
-  /** Client: read keyboard state directly and send to host (throttled to ~30Hz) */
-  private inputSendTimer = 0;
-  private sendLocalInput(dt: number): void {
+  /** Client: send canonical 60Hz input frame and apply prediction from that same frame. */
+  private stepLocalInputFrame(input: { moveX: number; moveY: number; dash: boolean; ability: boolean }): void {
     if (!this.netClient) return;
+    this.clientTick++;
 
-    this.inputSendTimer -= dt;
-    if (this.inputSendTimer > 0) return;
-    this.inputSendTimer = 1 / 30;
+    const frame = this.prediction
+      ? this.prediction.createInputFrame(this.localPlayerId, this.clientTick, input.moveX, input.moveY, input.dash, input.ability)
+      : {
+        playerId: this.localPlayerId,
+        seq: this.clientTick,
+        clientTick: this.clientTick,
+        moveX: input.moveX,
+        moveY: input.moveY,
+        buttons: (input.dash ? 1 : 0) | (input.ability ? 2 : 0),
+      };
 
-    // Read keyboard directly — InputSystem doesn't run on client
-    const input = getKeyboardInput();
+    if (this.prediction && NETCODE_V2_PREDICTION_ENABLED) {
+      this.prediction.enqueue(frame);
+      this.prediction.applyLivePrediction(this.world, this.localPlayerId, frame, 1 / 60);
+    }
 
-    this.netClient.send({
-      type: MessageType.Input,
-      playerId: this.localPlayerId,
-      input,
+    this.sendV2Envelope('c_input', frame);
+    netDebug.log({
+      kind: 'input_sent',
+      ts: Date.now(),
+      seq: frame.seq,
+      clientTick: frame.clientTick,
+      moveX: frame.moveX,
+      moveY: frame.moveY,
+      buttons: frame.buttons,
+    });
+  }
+
+  private maybeSendPing(): void {
+    if (!this.netClient) return;
+    const now = performance.now();
+    if (now - this.lastPingAt > 1000) {
+      this.lastPingAt = now;
+      this.sendV2Envelope('c_ping', { t: now });
+    }
+  }
+
+  private pushMetric(bucket: number[], value: number, limit: number): void {
+    bucket.push(value);
+    if (bucket.length > limit) {
+      bucket.splice(0, bucket.length - limit);
+    }
+  }
+
+  private estimateV2EnvelopeBytes(type: EnvelopeV2['t'], payload: unknown, targetPlayerId?: number): number {
+    const envelope: EnvelopeV2 = {
+      v: PROTOCOL_V2,
+      t: type,
+      room: this.lobby.roomCode,
+      ts: Date.now(),
+      payload,
+      targetPlayerId,
+    };
+    return JSON.stringify(envelope).length;
+  }
+
+  private p95(values: number[]): number {
+    if (values.length === 0) return 0;
+    const sorted = [...values].sort((a, b) => a - b);
+    const idx = Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95));
+    return sorted[idx] ?? 0;
+  }
+
+  private maybeLogNetMetrics(): void {
+    const now = performance.now();
+    if (this.netMetricsLastLogAt === 0) {
+      this.netMetricsLastLogAt = now;
+      return;
+    }
+    if (now - this.netMetricsLastLogAt < 5000) return;
+    this.netMetricsLastLogAt = now;
+
+    const log = {
+      role: this.networkRole,
+      tick: this.simTick,
+      entityCount: this.world.entityCount(),
+      hostSnapshotP95Ms: Math.round(this.p95(this.hostSnapshotBuildMs) * 100) / 100,
+      hostPayloadP95Bytes: Math.round(this.p95(this.hostPayloadBytes)),
+      clientApplyP95Ms: Math.round(this.p95(this.clientApplyMs) * 100) / 100,
+      rttMs: Math.round(this.netClock.getRTTMs()),
+      jitterP95Ms: Math.round(this.netClock.getJitterP95Ms()),
+    };
+    console.log('[net-v2-metrics]', JSON.stringify(log));
+    netDebug.log({
+      kind: 'metrics',
+      ts: Date.now(),
+      role: log.role,
+      tick: log.tick,
+      entityCount: log.entityCount,
+      hostSnapshotP95Ms: log.hostSnapshotP95Ms,
+      hostPayloadP95Bytes: log.hostPayloadP95Bytes,
+      clientApplyP95Ms: log.clientApplyP95Ms,
+      rttMs: log.rttMs,
+      jitterP95Ms: log.jitterP95Ms,
     });
   }
 
@@ -1149,13 +1559,17 @@ export class Game {
 
   /** Client: manually update camera since CameraSystem doesn't run */
   private updateClientCamera(dt: number): void {
+    const beforeX = camera.x;
+    const beforeY = camera.y;
     // Find local player entity by playerId component
     for (const pe of this.world.query(PLAYER, TRANSFORM)) {
       const p = this.world.getComponent<Player>(pe, PLAYER);
       if (p && p.playerId === this.localPlayerId) {
         const t = this.world.getComponent<Transform>(pe, TRANSFORM)!;
-        camera.targetX = t.pos.x;
-        camera.targetY = t.pos.y;
+        if (Number.isFinite(t.pos.x) && Number.isFinite(t.pos.y)) {
+          camera.targetX = Math.max(0, Math.min(WORLD_WIDTH, t.pos.x));
+          camera.targetY = Math.max(0, Math.min(WORLD_HEIGHT, t.pos.y));
+        }
         break;
       }
     }
@@ -1165,6 +1579,123 @@ export class Game {
     camera.prevY = camera.y;
     camera.x += (camera.targetX - camera.x) * CAMERA_LERP * dt;
     camera.y += (camera.targetY - camera.y) * CAMERA_LERP * dt;
+    netDebug.logSample('camera_step', {
+      kind: 'camera_step',
+      ts: Date.now(),
+      dt,
+      delta: Math.hypot(camera.x - beforeX, camera.y - beforeY),
+      targetDelta: Math.hypot(camera.targetX - camera.x, camera.targetY - camera.y),
+    });
+
+    // Client camera is updated every render frame, not fixed-tick.
+    // Keep prev==current so global snapshot alpha doesn't induce visible 20Hz camera pulse.
+    camera.prevX = camera.x;
+    camera.prevY = camera.y;
+
+    if (!Number.isFinite(camera.x) || !Number.isFinite(camera.y)) {
+      camera.x = WORLD_WIDTH / 2;
+      camera.y = WORLD_HEIGHT / 2;
+      camera.prevX = camera.x;
+      camera.prevY = camera.y;
+      camera.targetX = camera.x;
+      camera.targetY = camera.y;
+    }
+  }
+
+  private smoothLocalHudState(dt: number): void {
+    const epsilon = 0.05;
+    let localEntity: number | null = null;
+    let displayedDash = 0;
+    for (const pe of this.world.query(PLAYER)) {
+      const p = this.world.getComponent<Player>(pe, PLAYER);
+      if (!p || p.playerId !== this.localPlayerId) continue;
+      p.dashCooldownTimer = Math.max(0, p.dashCooldownTimer - dt);
+      p.dashCooldownTimer = Math.min(p.dashCooldownTimer, this.lastAuthoritativeDashCooldown + epsilon);
+      displayedDash = p.dashCooldownTimer;
+      localEntity = pe;
+      break;
+    }
+    if (localEntity == null) return;
+
+    let weaponCount = 0;
+    let displayedWeaponSum = 0;
+    for (const we of this.world.query(WEAPON, WEAPON_OWNER)) {
+      const owner = this.world.getComponent<WeaponOwner>(we, WEAPON_OWNER);
+      if (!owner || owner.owner !== localEntity) continue;
+      const weapon = this.world.getComponent<Weapon>(we, WEAPON);
+      if (!weapon) continue;
+      weapon.cooldownTimer = Math.max(0, weapon.cooldownTimer - dt);
+      const authCooldown = this.lastAuthoritativeWeaponCooldownByEntity.get(we);
+      if (authCooldown !== undefined) {
+        weapon.cooldownTimer = Math.min(weapon.cooldownTimer, authCooldown + epsilon);
+      }
+      displayedWeaponSum += weapon.cooldownTimer;
+      weaponCount++;
+    }
+    const displayedWeaponAvg = weaponCount > 0 ? displayedWeaponSum / weaponCount : 0;
+    netDebug.logSample('hud_cooldown_step', {
+      kind: 'hud_cooldown_step',
+      ts: Date.now(),
+      dt,
+      dashDisplayed: displayedDash,
+      dashAuthoritative: this.lastAuthoritativeDashCooldown,
+      weaponDisplayedAvg: displayedWeaponAvg,
+      weaponAuthoritativeAvg: this.lastAuthoritativeWeaponCooldownAvg,
+    });
+  }
+
+  // Local player is prediction-driven; keep prev==pos so global snapshot alpha doesn't induce visible stutter.
+  private pinLocalPrevToPos(): void {
+    for (const pe of this.world.query(PLAYER, TRANSFORM)) {
+      const p = this.world.getComponent<Player>(pe, PLAYER);
+      if (!p || p.playerId !== this.localPlayerId) continue;
+      const t = this.world.getComponent<Transform>(pe, TRANSFORM);
+      if (!t) return;
+      t.prevPos.x = t.pos.x;
+      t.prevPos.y = t.pos.y;
+      return;
+    }
+  }
+
+  private logHostPlayerState(): void {
+    if (this.networkRole !== 'host') return;
+    for (const pe of this.world.query(PLAYER, TRANSFORM, VELOCITY)) {
+      const player = this.world.getComponent<Player>(pe, PLAYER);
+      const transform = this.world.getComponent<Transform>(pe, TRANSFORM);
+      const velocity = this.world.getComponent<any>(pe, VELOCITY);
+      if (!player || !transform || !velocity) continue;
+      netDebug.log({
+        kind: 'host_player_state',
+        ts: Date.now(),
+        playerId: player.playerId,
+        x: transform.pos.x,
+        y: transform.pos.y,
+        vx: velocity.x,
+        vy: velocity.y,
+        isDashing: player.isDashing,
+        speed: player.speed,
+        speedMultiplier: player.speedMultiplier,
+      });
+    }
+  }
+
+  private captureAuthoritativeCooldowns(snapshot: SnapshotV2): void {
+    const localPlayer = snapshot.lanes.players.find((p) => p.player.playerId === this.localPlayerId);
+    this.lastAuthoritativeDashCooldown = localPlayer?.player.dashCooldownTimer ?? 0;
+    this.lastAuthoritativeWeaponCooldownByEntity.clear();
+    if (!localPlayer || snapshot.lanes.weapons.length === 0) {
+      this.lastAuthoritativeWeaponCooldownAvg = 0;
+      return;
+    }
+    let sum = 0;
+    let count = 0;
+    for (const weapon of snapshot.lanes.weapons) {
+      if (weapon.owner.owner !== localPlayer.id) continue;
+      sum += weapon.weapon.cooldownTimer;
+      count++;
+      this.lastAuthoritativeWeaponCooldownByEntity.set(weapon.id, weapon.weapon.cooldownTimer);
+    }
+    this.lastAuthoritativeWeaponCooldownAvg = count > 0 ? sum / count : 0;
   }
 
   private checkAllPlayersDead(): void {
@@ -1172,8 +1703,10 @@ export class Game {
     if (allPlayers.length === 0) return;
 
     let allDowned = true;
+    const states: Array<{ playerId: number; downed: boolean }> = [];
     for (const pe of allPlayers) {
       const player = this.world.getComponent<Player>(pe, PLAYER)!;
+      states.push({ playerId: player.playerId, downed: player.downed });
       if (!player.downed) {
         allDowned = false;
         break;
@@ -1181,8 +1714,9 @@ export class Game {
     }
 
     if (allDowned) {
+      console.warn('[net-v2] all players downed', states);
       if (this.networkRole === 'host' && this.netHost) {
-        this.netHost.broadcast({ type: MessageType.GameOver });
+        this.sendV2Envelope('s_run_end', { reason: 'all_downed' });
       }
       changeState(this.stateMgr, GameState.GameOver);
       stopAmbientDrone();
@@ -1191,8 +1725,11 @@ export class Game {
 
   private renderFrame(): void {
     const state = this.stateMgr.current;
-    // For client, use alpha=1 since there's no accumulator-based interpolation (snapshot interpolator handles it)
-    const alpha = this.networkRole === 'client' ? 1 : this.accumulator / TICK_DT;
+    const alpha = this.networkRole === 'client'
+      ? (this.replicaStore
+        ? this.replicaStore.getRenderAlpha(performance.now(), this.netClock.getInterpolationDelayMs())
+        : 1)
+      : this.accumulator / TICK_DT;
 
     if (state === GameState.Menu) {
       drawMenu(this.cc);

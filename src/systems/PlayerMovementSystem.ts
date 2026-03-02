@@ -2,8 +2,8 @@ import type { System } from '../ecs/system';
 import type { World } from '../ecs/ecs';
 import { TRANSFORM, VELOCITY, INPUT, PLAYER, HEALTH, COLLIDER } from '../components';
 import type { Transform, Velocity, InputState, Player, Health } from '../components';
-import { WORLD_WIDTH, WORLD_HEIGHT, PLAYER_RADIUS } from '../constants';
-import { playSound } from '../audio/audio';
+import { playSyncedSound } from '../audio/audio';
+import { applyNormalPlayerVelocity, integratePlayerVelocity } from '../sim-core/local-move';
 
 export const PlayerMovementSystem: System = {
   name: 'PlayerMovementSystem',
@@ -39,29 +39,16 @@ export const PlayerMovementSystem: System = {
         player.isDashing = true;
         player.dashTimer = player.dashDuration;
         player.dashCooldownTimer = player.dashCooldown;
-        playSound('dash', transform.pos.x, transform.pos.y);
+        playSyncedSound('dash', transform.pos.x, transform.pos.y);
         vel.x = input.moveX * player.dashSpeed;
         vel.y = input.moveY * player.dashSpeed;
       } else {
-        // Normal movement — apply chill debuff if active
-        let speedMult = Math.max(0.2, Math.min(player.speedMultiplier, 1.5));
-        if (player.chilledTimer > 0) {
-          player.chilledTimer -= dt;
-          speedMult *= 0.5;
-        }
-        vel.x = input.moveX * player.speed * speedMult;
-        vel.y = input.moveY * player.speed * speedMult;
+        // Normal movement.
+        applyNormalPlayerVelocity(player, vel, input.moveX, input.moveY, dt);
       }
 
       // Apply velocity
-      transform.prevPos.x = transform.pos.x;
-      transform.prevPos.y = transform.pos.y;
-      transform.pos.x += vel.x * dt;
-      transform.pos.y += vel.y * dt;
-
-      // World bounds
-      transform.pos.x = Math.max(PLAYER_RADIUS, Math.min(WORLD_WIDTH - PLAYER_RADIUS, transform.pos.x));
-      transform.pos.y = Math.max(PLAYER_RADIUS, Math.min(WORLD_HEIGHT - PLAYER_RADIUS, transform.pos.y));
+      integratePlayerVelocity(transform, vel, dt);
 
       // iframes
       if (health && health.iframes > 0) {

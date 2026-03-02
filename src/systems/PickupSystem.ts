@@ -3,7 +3,7 @@ import type { World } from '../ecs/ecs';
 import { PICKUP, TRANSFORM, PLAYER, COLLIDER, HEALTH } from '../components';
 import type { Pickup, Transform, Player, Health } from '../components';
 import { vec2Dist, vec2Normalize, vec2Sub, vec2DistSq } from '../utils/math';
-import { playSound } from '../audio/audio';
+import { playSyncedSound } from '../audio/audio';
 
 export const PickupSystem: System = {
   name: 'PickupSystem',
@@ -65,10 +65,10 @@ export const PickupSystem: System = {
             const p = world.getComponent<Player>(pe, PLAYER)!;
             p.xp += pickup.value;
           }
-          playSound('xp_pickup', transform.pos.x, transform.pos.y);
+          playSyncedSound('xp_pickup', transform.pos.x, transform.pos.y);
         } else if (pickup.type === 'health' && playerH) {
           playerH.current = Math.min(playerH.max, playerH.current + pickup.value);
-          playSound('health_pickup', transform.pos.x, transform.pos.y);
+          playSyncedSound('health_pickup', transform.pos.x, transform.pos.y);
         } else if (pickup.type === 'magnet') {
           // Attract all pickups on the map toward this player
           for (const pe of world.query(PICKUP, TRANSFORM)) {

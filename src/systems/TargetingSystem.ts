@@ -5,6 +5,7 @@ import type { Transform, Weapon, WeaponOwner, Velocity } from '../components';
 import { vec2DistSq } from '../utils/math';
 import { TargetingType, SPATIAL_CELL_SIZE } from '../constants';
 import { SpatialHash } from '../spatial/spatial-hash';
+import { simChance } from '../sim-core/random';
 
 const enemyHash = new SpatialHash(SPATIAL_CELL_SIZE);
 
@@ -111,7 +112,7 @@ export const TargetingSystem: System = {
           if (vec2DistSq(ownerTransform.pos, et.pos) <= rangeSq) {
             // Reservoir sampling: pick uniformly at random without allocating array
             count++;
-            if (Math.random() < 1 / count) picked = enemy;
+            if (simChance(1 / count)) picked = enemy;
           }
         }
         if (picked >= 0) {

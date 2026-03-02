@@ -2,14 +2,10 @@ import { AudioEngine } from './audio-engine';
 import { camera } from '../systems/CameraSystem';
 import * as recipes from './sound-recipes';
 import type { DroneState } from './sound-recipes';
+import { emitRunEvent } from '../sim-core/events';
+import type { NetSoundEvent } from '../net-v2/protocol';
 
-export type SoundEvent =
-  | 'fire_projectile' | 'fire_spread' | 'fire_sweep' | 'fire_nova'
-  | 'fire_chain' | 'fire_boomerang' | 'fire_ground_zone' | 'fire_runic'
-  | 'fire_beam' | 'fire_spiral'
-  | 'hit_projectile' | 'hit_sweep' | 'hit_nova' | 'hit_zone'
-  | 'enemy_death' | 'elite_death'
-  | 'dash' | 'player_hit' | 'level_up' | 'xp_pickup' | 'health_pickup';
+export type SoundEvent = NetSoundEvent;
 
 let engine: AudioEngine | null = null;
 let drone: DroneState | null = null;
@@ -117,6 +113,22 @@ export function playSound(
   }
 
   if (dur > 0) engine.addVoice(dur);
+}
+
+export function playSyncedSound(
+  event: SoundEvent,
+  worldX: number,
+  worldY: number,
+  isCaster = false,
+): void {
+  playSound(event, worldX, worldY, isCaster);
+  emitRunEvent({
+    type: 'sfx',
+    event,
+    x: worldX,
+    y: worldY,
+    isCaster: isCaster || undefined,
+  });
 }
 
 // ── Ambient Drone ──

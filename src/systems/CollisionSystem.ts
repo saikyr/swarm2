@@ -8,7 +8,8 @@ import { SPATIAL_CELL_SIZE } from '../constants';
 import { vec2DistSq, vec2Sub, vec2Angle } from '../utils/math';
 import { spawnDamageNumber } from '../rendering/damage-numbers';
 import { addScreenShake, type ScreenShake } from '../rendering/effects';
-import { playSound } from '../audio/audio';
+import { playSyncedSound } from '../audio/audio';
+import { emitRunEvent } from '../sim-core/events';
 
 let spatialHash = new SpatialHash(SPATIAL_CELL_SIZE);
 
@@ -75,7 +76,7 @@ export const CollisionSystem: System = {
             world.addComponent(other, DAMAGE_FLASH, { timer: 0.08, duration: 0.08 });
             spawnDamageNumber(world, otherT.pos.x, otherT.pos.y - otherC.radius, dmg);
             if (screenShakeRef) addScreenShake(screenShakeRef, 2);
-            playSound('hit_projectile', otherT.pos.x, otherT.pos.y);
+            playSyncedSound('hit_projectile', otherT.pos.x, otherT.pos.y);
           }
 
           proj.piercing--;
@@ -120,7 +121,7 @@ export const CollisionSystem: System = {
           world.addComponent(other, DAMAGE_FLASH, { timer: 0.08, duration: 0.08 });
           spawnDamageNumber(world, otherT.pos.x, otherT.pos.y - (otherC?.radius ?? 10), dmg);
           if (screenShakeRef) addScreenShake(screenShakeRef, 3);
-          playSound('hit_sweep', otherT.pos.x, otherT.pos.y);
+          playSyncedSound('hit_sweep', otherT.pos.x, otherT.pos.y);
         }
       }
     }
@@ -153,7 +154,8 @@ export const CollisionSystem: System = {
             health.iframes = 0.5;
             world.addComponent(other, DAMAGE_FLASH, { timer: 0.1, duration: 0.1 });
             if (screenShakeRef) addScreenShake(screenShakeRef, 5);
-            playSound('player_hit', otherT.pos.x, otherT.pos.y);
+            emitRunEvent({ type: 'shake', amount: 5 });
+            playSyncedSound('player_hit', otherT.pos.x, otherT.pos.y);
           } else {
             const novaDmgMult = getOwnerDmgMult(nova.owner);
             const dmg = nova.damage * novaDmgMult;
@@ -162,7 +164,7 @@ export const CollisionSystem: System = {
             trackDamage(nova.owner, dmg);
             world.addComponent(other, DAMAGE_FLASH, { timer: 0.08, duration: 0.08 });
             spawnDamageNumber(world, otherT.pos.x, otherT.pos.y - (otherC?.radius ?? 10), dmg);
-            playSound('hit_nova', otherT.pos.x, otherT.pos.y);
+            playSyncedSound('hit_nova', otherT.pos.x, otherT.pos.y);
           }
         }
       }
@@ -197,7 +199,7 @@ export const CollisionSystem: System = {
             health.iframes = 0.3;
             world.addComponent(other, DAMAGE_FLASH, { timer: 0.1, duration: 0.1 });
             if (screenShakeRef) addScreenShake(screenShakeRef, 3);
-            playSound('player_hit', otherT.pos.x, otherT.pos.y);
+            playSyncedSound('player_hit', otherT.pos.x, otherT.pos.y);
           } else {
             const dmg = zone.damage * zoneDmgMult;
             health.current -= dmg;
@@ -205,7 +207,7 @@ export const CollisionSystem: System = {
             trackDamage(zone.owner, dmg);
             world.addComponent(other, DAMAGE_FLASH, { timer: 0.08, duration: 0.08 });
             spawnDamageNumber(world, otherT.pos.x, otherT.pos.y - (otherC?.radius ?? 10), dmg);
-            playSound('hit_zone', otherT.pos.x, otherT.pos.y);
+            playSyncedSound('hit_zone', otherT.pos.x, otherT.pos.y);
           }
         }
       }
@@ -240,7 +242,7 @@ export const CollisionSystem: System = {
             world.addComponent(other, DAMAGE_FLASH, { timer: 0.08, duration: 0.08 });
             spawnDamageNumber(world, otherT.pos.x, otherT.pos.y - otherC.radius, dmg);
             if (screenShakeRef) addScreenShake(screenShakeRef, 2);
-            playSound('hit_projectile', otherT.pos.x, otherT.pos.y);
+            playSyncedSound('hit_projectile', otherT.pos.x, otherT.pos.y);
           }
         }
       }
@@ -273,7 +275,8 @@ export const CollisionSystem: System = {
           otherH.iframes = 0.5;
           world.addComponent(other, DAMAGE_FLASH, { timer: 0.1, duration: 0.1 });
           if (screenShakeRef) addScreenShake(screenShakeRef, 5);
-          playSound('player_hit', otherT.pos.x, otherT.pos.y);
+          emitRunEvent({ type: 'shake', amount: 5 });
+          playSyncedSound('player_hit', otherT.pos.x, otherT.pos.y);
           world.destroyEntity(projEntity);
           break;
         }
@@ -303,7 +306,8 @@ export const CollisionSystem: System = {
           playerH.iframes = 0.5;
           world.addComponent(playerEntity, DAMAGE_FLASH, { timer: 0.1, duration: 0.1 });
           if (screenShakeRef) addScreenShake(screenShakeRef, 5);
-          playSound('player_hit', playerT.pos.x, playerT.pos.y);
+          emitRunEvent({ type: 'shake', amount: 5 });
+          playSyncedSound('player_hit', playerT.pos.x, playerT.pos.y);
           break;
         }
       }

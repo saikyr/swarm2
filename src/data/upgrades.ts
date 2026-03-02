@@ -6,6 +6,7 @@ import { RARITY_WEIGHTS, type Rarity } from '../constants';
 import { WEAPON_DEFS, applyLevelScaling, type WeaponDef } from './weapons';
 import { getOverclocksForWeapon } from './overclocks';
 import { WEAPON_UNLOCK_LEVELS } from '../game/player-manager';
+import { simInt, simRandom, simShuffle } from '../sim-core/random';
 
 interface UpgradeDef {
   id: string;
@@ -86,7 +87,7 @@ const STAT_UPGRADE_POOL: UpgradeDef[] = [
 ];
 
 function rollRarity(): Rarity {
-  const r = Math.random();
+  const r = simRandom();
   let acc = 0;
   for (const [rarity, weight] of Object.entries(RARITY_WEIGHTS)) {
     acc += weight;
@@ -163,10 +164,10 @@ export function generateUpgradeCards(world: World, count = 3, playerEntity?: num
   const weaponChance = Math.min(0.55, 0.2 + playerLevel * 0.025);
 
   for (let i = 0; i < count; i++) {
-    const roll = Math.random();
+    const roll = simRandom();
 
     if (roll < weaponChance && playerWeapons.length > 0) {
-      const weapon = playerWeapons[Math.floor(Math.random() * playerWeapons.length)];
+      const weapon = playerWeapons[simInt(0, playerWeapons.length - 1)];
       const cardId = `levelup_${weapon.id}_${weapon.level}`;
       if (!usedIds.has(cardId)) {
         usedIds.add(cardId);
@@ -202,7 +203,7 @@ export function generateUpgradeCards(world: World, count = 3, playerEntity?: num
     }
     if (pool.length === 0) continue;
 
-    const def = pool[Math.floor(Math.random() * pool.length)];
+    const def = pool[simInt(0, pool.length - 1)];
     usedIds.add(def.id);
     cards.push({
       id: def.id,
@@ -254,7 +255,7 @@ export function generateWeaponUnlockCards(world: World, playerEntity: number): U
   }
 
   // Shuffle and pick up to 3 choices
-  const shuffled = [...lockedWeapons].sort(() => Math.random() - 0.5);
+  const shuffled = simShuffle(lockedWeapons);
   const choices = shuffled.slice(0, 3);
 
   return choices.map(({ weapon, def }) => ({
@@ -282,7 +283,7 @@ export function generateOverclockCards(weapon: Weapon): UpgradeCard[] {
 
   // Pick 2-3 options
   const count = Math.min(available.length, tier === 'unstable' ? 2 : 3);
-  const shuffled = [...available].sort(() => Math.random() - 0.5);
+  const shuffled = simShuffle(available);
   const choices = shuffled.slice(0, count);
 
   const wRef = weapon;
