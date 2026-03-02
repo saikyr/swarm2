@@ -118,8 +118,8 @@ function updateDasher(
       vel.y = dir.y * enemy.speed * 0.7;
       transform.rotation = Math.atan2(dir.y, dir.x);
 
-      // When close enough, start wind-up
-      if (dist < 200) {
+      // When close enough and cooldown expired, start wind-up
+      if (dist < 200 && enemy.aiStateTimer <= 0) {
         enemy.aiState = EnemyAIState.WindUp;
         enemy.aiStateTimer = 0.3;
         // Lock dash direction
@@ -155,6 +155,7 @@ function updateDasher(
 
       if (enemy.aiStateTimer <= 0) {
         enemy.aiState = EnemyAIState.Chase;
+        enemy.aiStateTimer = 1.5; // Cooldown before next dash
       }
       break;
     }
